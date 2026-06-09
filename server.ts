@@ -26,6 +26,18 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
+// Wraps fetch with a 15-second AbortController timeout so Notion API hangs
+// never outlast Cloud Run's request timeout and return non-JSON HTML to the client.
+async function notionFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -479,7 +491,7 @@ async function startServer() {
         return res.status(400).json({ error: "notionToken is required." });
       }
 
-      const response = await fetch("https://api.notion.com/v1/search", {
+      const response = await notionFetch("https://api.notion.com/v1/search", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${notionToken}`,
@@ -495,8 +507,10 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({ error: errorData.message || "Failed to search Notion workspace." });
+        const errText = await response.text().catch(() => "");
+        let errMsg = "Failed to search Notion workspace.";
+        try { errMsg = JSON.parse(errText).message || errMsg; } catch {}
+        return res.status(response.status).json({ error: errMsg });
       }
 
       const data = await response.json();
@@ -516,6 +530,9 @@ async function startServer() {
       res.json({ success: true, pages });
     } catch (err: any) {
       console.error("Notion Search Error:", err);
+      if (err.name === "AbortError") {
+        return res.status(504).json({ error: "Notion API did not respond in time. Please check your network and try again." });
+      }
       res.status(500).json({ error: err.message || "Failed to contact Notion Workspace search API." });
     }
   });
@@ -530,7 +547,7 @@ async function startServer() {
 
       const dbTitle = title || "FinSnap Smart Ledger";
 
-      const response = await fetch("https://api.notion.com/v1/databases", {
+      const response = await notionFetch("https://api.notion.com/v1/databases", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${notionToken}`,
@@ -596,8 +613,10 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({ error: errorData.message || "Failed to auto-create Notion database schema." });
+        const errText = await response.text().catch(() => "");
+        let errMsg = "Failed to auto-create Notion database schema.";
+        try { errMsg = JSON.parse(errText).message || errMsg; } catch {}
+        return res.status(response.status).json({ error: errMsg });
       }
 
       const dbData = await response.json();
@@ -609,6 +628,9 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error("Notion Create Database Error:", err);
+      if (err.name === "AbortError") {
+        return res.status(504).json({ error: "Notion API did not respond in time. Please check your network and try again." });
+      }
       res.status(500).json({ error: err.message || "Failed to generate Notion database." });
     }
   });
@@ -621,7 +643,7 @@ async function startServer() {
         return res.status(400).json({ error: "notionToken and notionDatabaseId are required inside the session." });
       }
 
-      const response = await fetch(`https://api.notion.com/v1/databases/${notionDatabaseId}`, {
+      const response = await notionFetch(`https://api.notion.com/v1/databases/${notionDatabaseId}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${notionToken}`,
@@ -631,8 +653,10 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({ error: errorData.message || "Invalid database connection" });
+        const errText = await response.text().catch(() => "");
+        let errMsg = "Invalid database connection";
+        try { errMsg = JSON.parse(errText).message || errMsg; } catch {}
+        return res.status(response.status).json({ error: errMsg });
       }
 
       const info = await response.json();
@@ -643,6 +667,9 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error("Notion Verify Error:", err);
+      if (err.name === "AbortError") {
+        return res.status(504).json({ error: "Notion API did not respond in time. Please check your network and try again." });
+      }
       res.status(500).json({ error: err.message || "Failed to contact Notion API." });
     }
   });
@@ -701,7 +728,7 @@ async function startServer() {
         properties
       };
 
-      const response = await fetch("https://api.notion.com/v1/pages", {
+      const response = await notionFetch("https://api.notion.com/v1/pages", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${notionToken}`,
@@ -712,14 +739,19 @@ async function startServer() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({ error: errorData.message || "Failed to insert record into Notion." });
+        const errText = await response.text().catch(() => "");
+        let errMsg = "Failed to insert record into Notion.";
+        try { errMsg = JSON.parse(errText).message || errMsg; } catch {}
+        return res.status(response.status).json({ error: errMsg });
       }
 
       const data = await response.json();
       res.json({ success: true, id: data.id, url: data.url });
     } catch (err: any) {
       console.error("Notion Sync Error:", err);
+      if (err.name === "AbortError") {
+        return res.status(504).json({ error: "Notion API did not respond in time. Please check your network and try again." });
+      }
       res.status(500).json({ error: err.message || "Failed to synchronize to Notion." });
     }
   });

@@ -73,11 +73,10 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
         body: JSON.stringify({ notionToken: token })
       });
 
-      const contentType = res.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
+      let data: any;
+      try {
         data = await res.json();
-      } else {
+      } catch {
         throw new Error("Server returned an invalid response. Please try again.");
       }
 
