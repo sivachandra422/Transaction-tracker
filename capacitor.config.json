@@ -1,0 +1,6 @@
+{
+  "appId": "com.sivachandra.notiontracker",
+  "appName": "Notion Smart Tracker",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

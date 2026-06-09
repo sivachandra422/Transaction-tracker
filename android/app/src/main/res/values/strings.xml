@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Notion Smart Tracker</string>
+    <string name="title_activity_main">Notion Smart Tracker</string>
+    <string name="package_name">com.sivachandra.notiontracker</string>
+    <string name="custom_url_scheme">com.sivachandra.notiontracker</string>
+</resources>
