@@ -1,11 +1,6 @@
 import React, { useState } from "react";
 import { Key, Settings, HelpCircle, Cpu, Eye, EyeOff, Check, Sparkles, AlertCircle, Save, ArrowLeft } from "lucide-react";
-
-export interface LlmConfig {
-  provider: "gemini" | "openrouter" | "openai";
-  apiKey: string;
-  model: string;
-}
+import type { LlmConfig } from "../types";
 
 interface AiSettingsProps {
   config: LlmConfig;
@@ -104,7 +99,7 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
         <div className="flex gap-2 items-start">
           <Sparkles className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold">Zero-Cost Fallbacks available:</span> Connect to <strong className="font-extrabold text-indigo-950 dark:text-indigo-200">OpenRouter</strong> to use completely free LLMs (like Gemini Flash, Llama etc.) or set your OpenAI keys. Your keys are saved directly in your browser's private local storage.
+            <span className="font-bold">Zero-Cost Fallbacks available:</span> Connect to <strong className="font-extrabold text-indigo-950 dark:text-indigo-200">OpenRouter</strong> to use completely free LLMs (like Gemini Flash, Llama etc.) or set your OpenAI keys. Your keys are stored in secure session storage and never sent to our servers.
           </div>
         </div>
       </div>

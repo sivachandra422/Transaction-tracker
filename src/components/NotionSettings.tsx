@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { NotionConfig } from "../types";
 import { Key, Database, RefreshCw, CheckCircle2, AlertTriangle, ExternalLink, Copy, Check, BookOpen, Sparkles, FileSpreadsheet, Settings } from "lucide-react";
+import { searchNotionPages, createNotionDatabase, verifyNotionDatabase } from "../services/notionApi";
 
 interface NotionSettingsProps {
   config: NotionConfig;
@@ -67,34 +68,18 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
     setScannedPages([]);
 
     try {
-      const res = await fetch("/api/notion/search-pages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notionToken: token })
-      });
-
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error("Server returned an invalid response. Please try again.");
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Could not fetch available pages.");
-      }
-
-      if (data.pages && data.pages.length > 0) {
-        setScannedPages(data.pages);
-        setSelectedPageId(data.pages[0].id);
+      const pages = await searchNotionPages(token);
+      if (pages.length > 0) {
+        setScannedPages(pages);
+        setSelectedPageId(pages[0].id);
         setScanStatus("success");
       } else {
         setScanStatus("empty");
         setScanMsg("No shared pages detected. Ensure you've completed Step 2 below to grant access.");
       }
-    } catch (err: any) {
+    } catch (err) {
       setScanStatus("error");
-      setScanMsg(err.message || "Failed to scan workspace. Verify your Notion API token.");
+      setScanMsg(err instanceof Error ? err.message : "Failed to scan workspace. Verify your Notion API token.");
     } finally {
       setIsScanning(false);
     }
@@ -113,45 +98,21 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
     setCreateMsg("");
 
     try {
-      const res = await fetch("/api/notion/create-database", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          notionToken: token,
-          parentPageId: selectedPageId,
-          title: "FinSnap Smart Ledger"
-        })
-      });
-
-      const contentType = res.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        throw new Error("Server communication error occurred.");
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to build table.");
-      }
-
+      const data = await createNotionDatabase(token, selectedPageId, "FinSnap Smart Ledger");
       setDatabaseId(data.databaseId);
       setDbTitle(data.title);
       setCreateStatus("success");
-      setCreateMsg(`Success! Built table "FinSnap Smart Ledger"! Your tracker is fully connected.`);
+      setCreateMsg(`Success! Built table "${data.title}"! Your tracker is fully connected.`);
       setAutoSync(true);
-
-      // Save directly
       onSaveConfig({
         notionToken: token,
         notionDatabaseId: data.databaseId,
         autoSync: true,
-        databaseTitle: data.title
+        databaseTitle: data.title,
       });
-
-    } catch (err: any) {
+    } catch (err) {
       setCreateStatus("error");
-      setCreateMsg(err.message || "Database creation failed.");
+      setCreateMsg(err instanceof Error ? err.message : "Database creation failed.");
     } finally {
       setIsCreatingDb(false);
     }
@@ -170,40 +131,20 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
     setVerifyMsg("");
 
     try {
-      const res = await fetch("/api/notion/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notionToken: token, notionDatabaseId: databaseId })
-      });
-
-      const contentType = res.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(`Server returned an unexpected response (status code: ${res.status}). This may happen during server updates. Please retry in a few seconds.`);
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Connection test failed.");
-      }
-
+      const data = await verifyNotionDatabase(token, databaseId);
       setVerifyStatus("success");
       setDbTitle(data.title || "My Notion Tracker");
       setVerifyMsg(`Successfully connected! Database title is "${data.title || "Notion Tracker"}"`);
       setAutoSync(true);
-      
-      // Save directly
       onSaveConfig({
         notionToken: token,
         notionDatabaseId: databaseId,
         autoSync: true,
-        databaseTitle: data.title
+        databaseTitle: data.title,
       });
-    } catch (err: any) {
+    } catch (err) {
       setVerifyStatus("error");
-      setVerifyMsg(err.message || "Could not link. Double check your settings.");
+      setVerifyMsg(err instanceof Error ? err.message : "Could not link. Double check your settings.");
     } finally {
       setIsVerifying(false);
     }
