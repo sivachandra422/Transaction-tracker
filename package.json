@@ -37,7 +37,8 @@
     "recharts": "^3.8.1",
     "vite": "^6.2.3",
     "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "@supabase/supabase-js": "^2.49.4"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.0",
