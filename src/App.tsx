@@ -378,7 +378,7 @@ export default function App() {
         category: (info.category || "Other") as CategoryType,
         type: (info.type === "income" ? "income" : "expense") as "expense" | "income",
         date: info.date || new Date().toISOString().split('T')[0],
-        labels: Array.from(new Set([...(info.labels || []), "sms-auto", "simulated", info.isFallback ? "heuristic" : "gemini"])) as string[],
+        labels: Array.from(new Set([...(info.labels || []), "sms-auto", info.isFallback ? "heuristic" : "gemini"])) as string[],
         synced: false,
         createdAt: new Date().toISOString()
       };
@@ -957,7 +957,7 @@ export default function App() {
                     <Mail className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="email"
-                      placeholder="akshaya.lang.dev@gmail.com"
+                      placeholder="you@example.com"
                       required
                       value={signupForm.email}
                       onChange={e => setSignupForm(prev => ({ ...prev, email: e.target.value }))}
@@ -1000,7 +1000,7 @@ export default function App() {
                   type="submit"
                   className="w-full bg-indigo-650 hover:bg-indigo-750 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded-xl text-xs cursor-pointer select-none transition-colors"
                 >
-                  Verify Verification & Sign Up
+                  Create Account
                 </button>
                 <button
                   type="button"
@@ -1034,7 +1034,7 @@ export default function App() {
                     <Mail className="absolute left-3.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type="email"
-                      placeholder="akshaya.lang.dev@gmail.com"
+                      placeholder="you@example.com"
                       required
                       value={signinForm.email}
                       onChange={e => setSigninForm(prev => ({ ...prev, email: e.target.value }))}
@@ -1064,7 +1064,7 @@ export default function App() {
                   type="submit"
                   className="w-full bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-650 text-white font-bold py-3 px-4 rounded-xl text-xs cursor-pointer select-none shadow-md shadow-indigo-600/10 transition-colors"
                 >
-                  Verify Verification & Log In
+                  Sign In
                 </button>
                 <button
                   type="button"
@@ -1240,23 +1240,20 @@ export default function App() {
             {/* Mode 2: Indian Banks UPI & SMS Automation Simulator */}
             {fastEntryMode === "sms" && (
               <div className="space-y-3">
-                <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-xl p-3 text-[11px] text-amber-900 dark:text-amber-300 leading-relaxed space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-950 dark:text-amber-200">
-                    <Smartphone className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span>Browser Security Warning</span>
+                <div className="bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-3 text-[11px] text-indigo-900 dark:text-indigo-300 leading-relaxed space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-950 dark:text-indigo-200">
+                    <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>How it works</span>
                   </div>
-                  <p className="text-[10.5px]">
-                    To protect your privacy, web browsers (and this development iFrame) **cannot access your phone's physical hardware SMS inbox or system notification feed directly**.
-                  </p>
-                  <p className="text-[10.5px] font-medium text-slate-600 dark:text-slate-400">
-                    <strong className="text-indigo-600 dark:text-indigo-400">⚡ Automated Sync Setup:</strong> For full continuous tracking on Android, you can download a free SMS webhook forwarding utility from Google Play Store (e.g. <em>&quot;SMS to Webhook&quot;</em>) to securely relay bank SMS alerts to your custom server endpoint!
+                  <p className="text-[10.5px] text-slate-600 dark:text-slate-400">
+                    Paste any bank SMS alert below and we'll automatically extract the transaction details for you. Works with HDFC, ICICI, SBI, Axis, and all major Indian banks.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="block text-[10px] uppercase tracking-wider font-bold text-slate-500">
-                      Simulated Bank / App UPI SMS Text
+                      Bank SMS Alert
                     </label>
                     <button
                       type="button"
@@ -1288,7 +1285,7 @@ export default function App() {
                   {/* Preset Quick selections Grid */}
                   <div className="space-y-1">
                     <span className="block text-[9px] uppercase tracking-wider font-bold text-slate-450 dark:text-slate-500">
-                      Mock Transaction SMS Templates (Click to Load)
+                      Sample alerts to try
                     </span>
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
@@ -1581,13 +1578,23 @@ export default function App() {
           <div ref={txListRef} className="flex-1 max-h-[350px] overflow-y-auto">
             {filteredTransactions.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400 dark:text-slate-500">
-                <p>No transactions matched your search query.</p>
-                <button
-                  onClick={() => { setSearchQuery(""); setSelectedCategoryFilter("All"); }}
-                  className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline mt-1.5 block mx-auto cursor-pointer"
-                >
-                  Clear filter filters
-                </button>
+                {transactions.length === 0 ? (
+                  <>
+                    <Wallet className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                    <p className="font-semibold text-slate-500 dark:text-slate-400">No transactions yet</p>
+                    <p className="mt-1 text-[10px]">Paste a bank SMS above or tap <strong>+</strong> to add your first entry.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>No transactions matched your filters.</p>
+                    <button
+                      onClick={() => { setSearchQuery(""); setSelectedCategoryFilter("All"); }}
+                      className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline mt-1.5 block mx-auto cursor-pointer"
+                    >
+                      Clear filters
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
