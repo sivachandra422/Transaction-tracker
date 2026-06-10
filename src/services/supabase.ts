@@ -110,7 +110,7 @@ export async function sbDeleteTransaction(id: string): Promise<void> {
 }
 
 export async function sbFetchAllTransactions(): Promise<Transaction[]> {
-  if (!supabase) return [];
+  if (!supabase) return;
   const { data, error } = await supabase
     .from("transactions")
     .select("*")
@@ -123,7 +123,7 @@ export async function sbFetchAllTransactions(): Promise<Transaction[]> {
 }
 
 export async function sbClearTransactions(): Promise<void> {
-  if (!supabase) return [];
+  if (!supabase) return;
   const { error } = await supabase.from("transactions").delete().neq("id", "");
   if (error) console.error("[supabase] clear error:", error.message);
 }
