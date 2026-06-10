@@ -473,6 +473,12 @@ export default function App() {
       return;
     }
 
+    // Skip already-synced transactions to prevent duplicate Notion pages
+    if (tx.synced && tx.notionPageId) {
+      setSyncSuccess(tx.id);
+      return;
+    }
+
     setSyncPending(tx.id);
 
     try {

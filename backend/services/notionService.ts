@@ -1,4 +1,5 @@
 import { SyncInput } from "../validators/notionValidators.js";
+import { withRetry } from "../utils/retry.js";
 
 const NOTION_VERSION = "2022-06-28";
 const NOTION_BASE = "https://api.notion.com/v1";
@@ -61,20 +62,21 @@ export interface SyncResult {
 // ─── Search pages ─────────────────────────────────────────────────────────────
 
 export async function searchPages(notionToken: string): Promise<PageResult[]> {
-  const res = await notionFetch(`${NOTION_BASE}/search`, {
-    method: "POST",
-    headers: notionHeaders(notionToken),
-    body: JSON.stringify({ filter: { property: "object", value: "page" } }),
+  return withRetry(async () => {
+    const res = await notionFetch(`${NOTION_BASE}/search`, {
+      method: "POST",
+      headers: notionHeaders(notionToken),
+      body: JSON.stringify({ filter: { property: "object", value: "page" } }),
+    });
+
+    if (!res.ok) {
+      const msg = await extractErrorMessage(res, "Failed to search Notion workspace.");
+      throw mapNotionStatus(res.status, msg);
+    }
+
+    const data = (await res.json()) as { results: NotionPageObject[] };
+    return (data.results ?? []).map(pageToResult);
   });
-
-  if (!res.ok) {
-    const msg = await extractErrorMessage(res, "Failed to search Notion workspace.");
-    const err = mapNotionStatus(res.status, msg);
-    throw err;
-  }
-
-  const data = (await res.json()) as { results: NotionPageObject[] };
-  return (data.results ?? []).map(pageToResult);
 }
 
 // ─── Create database ──────────────────────────────────────────────────────────
@@ -84,21 +86,23 @@ export async function createDatabase(
   parentPageId: string,
   title = "FinSnap Smart Ledger"
 ): Promise<DatabaseResult> {
-  const body = buildDatabaseSchema(parentPageId, title);
+  return withRetry(async () => {
+    const body = buildDatabaseSchema(parentPageId, title);
 
-  const res = await notionFetch(`${NOTION_BASE}/databases`, {
-    method: "POST",
-    headers: notionHeaders(notionToken),
-    body: JSON.stringify(body),
+    const res = await notionFetch(`${NOTION_BASE}/databases`, {
+      method: "POST",
+      headers: notionHeaders(notionToken),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const msg = await extractErrorMessage(res, "Failed to create Notion database.");
+      throw mapNotionStatus(res.status, msg);
+    }
+
+    const data = (await res.json()) as { id: string; url: string };
+    return { databaseId: data.id, title, url: data.url };
   });
-
-  if (!res.ok) {
-    const msg = await extractErrorMessage(res, "Failed to create Notion database.");
-    throw mapNotionStatus(res.status, msg);
-  }
-
-  const data = (await res.json()) as { id: string; url: string };
-  return { databaseId: data.id, title, url: data.url };
 }
 
 // ─── Verify database ──────────────────────────────────────────────────────────
@@ -107,47 +111,51 @@ export async function verifyDatabase(
   notionToken: string,
   databaseId: string
 ): Promise<VerifyResult> {
-  const res = await notionFetch(`${NOTION_BASE}/databases/${databaseId}`, {
-    method: "GET",
-    headers: notionHeaders(notionToken),
+  return withRetry(async () => {
+    const res = await notionFetch(`${NOTION_BASE}/databases/${databaseId}`, {
+      method: "GET",
+      headers: notionHeaders(notionToken),
+    });
+
+    if (!res.ok) {
+      const msg = await extractErrorMessage(res, "Could not verify Notion database connection.");
+      throw mapNotionStatus(res.status, msg);
+    }
+
+    const info = (await res.json()) as {
+      title: Array<{ plain_text?: string }>;
+      properties: Record<string, unknown>;
+    };
+    return {
+      title: info.title?.[0]?.plain_text ?? "Notion Database",
+      properties: Object.keys(info.properties ?? {}),
+    };
   });
-
-  if (!res.ok) {
-    const msg = await extractErrorMessage(res, "Could not verify Notion database connection.");
-    throw mapNotionStatus(res.status, msg);
-  }
-
-  const info = (await res.json()) as {
-    title: Array<{ plain_text?: string }>;
-    properties: Record<string, unknown>;
-  };
-  return {
-    title: info.title?.[0]?.plain_text ?? "Notion Database",
-    properties: Object.keys(info.properties ?? {}),
-  };
 }
 
 // ─── Sync transaction ─────────────────────────────────────────────────────────
 
 export async function syncTransaction(input: SyncInput): Promise<SyncResult> {
-  const { notionToken, notionDatabaseId, transaction } = input;
+  return withRetry(async () => {
+    const { notionToken, notionDatabaseId, transaction } = input;
 
-  const properties = buildTransactionProperties(transaction);
-  const payload = { parent: { database_id: notionDatabaseId }, properties };
+    const properties = buildTransactionProperties(transaction);
+    const payload = { parent: { database_id: notionDatabaseId }, properties };
 
-  const res = await notionFetch(`${NOTION_BASE}/pages`, {
-    method: "POST",
-    headers: notionHeaders(notionToken),
-    body: JSON.stringify(payload),
+    const res = await notionFetch(`${NOTION_BASE}/pages`, {
+      method: "POST",
+      headers: notionHeaders(notionToken),
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const msg = await extractErrorMessage(res, "Failed to write transaction to Notion.");
+      throw mapNotionStatus(res.status, msg);
+    }
+
+    const data = (await res.json()) as { id: string; url: string };
+    return { id: data.id, url: data.url };
   });
-
-  if (!res.ok) {
-    const msg = await extractErrorMessage(res, "Failed to write transaction to Notion.");
-    throw mapNotionStatus(res.status, msg);
-  }
-
-  const data = (await res.json()) as { id: string; url: string };
-  return { id: data.id, url: data.url };
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
