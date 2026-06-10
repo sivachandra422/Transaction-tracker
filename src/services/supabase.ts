@@ -10,6 +10,52 @@ export const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+export async function sbSignUp(email: string, password: string, name: string) {
+  if (!supabase) throw new Error("Supabase not configured");
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { name } },
+  });
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
+export async function sbSignIn(email: string, password: string) {
+  if (!supabase) throw new Error("Supabase not configured");
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
+export async function sbSignOut() {
+  if (!supabase) return;
+  await supabase.auth.signOut();
+}
+
+export async function sbGetSession() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user ?? null;
+}
+
+export function sbOnAuthChange(cb: (user: { email: string; name: string } | null) => void) {
+  if (!supabase) return () => {};
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) {
+      cb({
+        email: session.user.email ?? "",
+        name: session.user.user_metadata?.name ?? session.user.email?.split("@")[0] ?? "User",
+      });
+    } else {
+      cb(null);
+    }
+  });
+  return () => subscription.unsubscribe();
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Map app Transaction → Supabase row (snake_case) */
@@ -77,7 +123,7 @@ export async function sbFetchAllTransactions(): Promise<Transaction[]> {
 }
 
 export async function sbClearTransactions(): Promise<void> {
-  if (!supabase) return;
+  if (!supabase) return [];
   const { error } = await supabase.from("transactions").delete().neq("id", "");
   if (error) console.error("[supabase] clear error:", error.message);
 }

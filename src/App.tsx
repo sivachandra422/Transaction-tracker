@@ -11,6 +11,7 @@ import { useTransactionStore } from "./store/transactionStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { useSyncStore } from "./store/syncStore";
 import { parseTransactionAi } from "./services/aiApi";
+import { sbSignUp, sbSignIn, sbSignOut, sbOnAuthChange } from "./services/supabase";
 import { syncToNotion } from "./services/notionApi";
 import { CATEGORIES, CATEGORY_COLORS, DEFAULT_HEURISTICS } from "./constants";
 import {
@@ -50,6 +51,21 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Restore Supabase session on mount + listen for auth changes
+  useEffect(() => {
+    const unsub = sbOnAuthChange((user) => {
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        logOut();
+        setOnboardingStep("welcome");
+        setActiveTab("dashboard");
+      }
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ─── Local UI state ─────────────────────────────────────────────────────────
   const [onboardingStep, setOnboardingStep] = useState<"welcome" | "signup" | "signin">("welcome");
   const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", agreed: true });
@@ -59,30 +75,38 @@ export default function App() {
   // ─── Navigation ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"dashboard" | "add" | "rules" | "charts" | "notion" | "ai">("dashboard");
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
-    
+
     if (!signupForm.name.trim() || !signupForm.email.trim() || !signupForm.password.trim()) {
       setAuthError("Please fill out all fields.");
       return;
     }
-    
     if (signupForm.password.length < 6) {
       setAuthError("Password must be at least 6 characters long.");
       return;
     }
-
     if (!signupForm.email.includes("@")) {
       setAuthError("Please specify a valid email address.");
       return;
     }
 
-    const userData = { email: signupForm.email.trim(), name: signupForm.name.trim() };
-    setCurrentUser(userData);
+    try {
+      await sbSignUp(signupForm.email.trim(), signupForm.password, signupForm.name.trim());
+      // After sign-up Supabase may require email confirmation depending on project settings.
+      // onAuthStateChange will call setCurrentUser once the session is active.
+      setAuthError(""); 
+      // If email confirmation is disabled, session fires immediately via onAuthStateChange.
+      // Show a hint in case confirmation email is sent:
+      const userData = { email: signupForm.email.trim(), name: signupForm.name.trim() };
+      setCurrentUser(userData);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Sign-up failed.");
+    }
   };
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
 
@@ -90,18 +114,24 @@ export default function App() {
       setAuthError("Please fill out all fields.");
       return;
     }
-
     if (signinForm.password.length < 6) {
       setAuthError("Password must be at least 6 characters long.");
       return;
     }
 
-    const name = signinForm.email.split("@")[0];
-    const userData = { email: signinForm.email.trim(), name: name.charAt(0).toUpperCase() + name.slice(1) };
-    setCurrentUser(userData);
+    try {
+      const user = await sbSignIn(signinForm.email.trim(), signinForm.password);
+      if (user) {
+        const name = user.user_metadata?.name ?? user.email?.split("@")[0] ?? "User";
+        setCurrentUser({ email: user.email ?? signinForm.email.trim(), name: name.charAt(0).toUpperCase() + name.slice(1) });
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Invalid email or password.");
+    }
   };
 
-  const handleLogOut = () => {
+  const handleLogOut = async () => {
+    await sbSignOut();
     logOut();
     setOnboardingStep("welcome");
     setActiveTab("dashboard");
