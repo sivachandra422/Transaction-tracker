@@ -110,7 +110,7 @@ export async function sbDeleteTransaction(id: string): Promise<void> {
 }
 
 export async function sbFetchAllTransactions(): Promise<Transaction[]> {
-  if (!supabase) return;
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("transactions")
     .select("*")
