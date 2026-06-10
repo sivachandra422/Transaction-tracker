@@ -79,6 +79,36 @@ export async function searchPages(notionToken: string): Promise<PageResult[]> {
   });
 }
 
+// ─── Search existing databases ────────────────────────────────────────────────
+
+interface NotionDatabaseObject {
+  id: string;
+  url: string;
+  title?: Array<{ plain_text?: string }>;
+}
+
+export async function searchDatabases(notionToken: string): Promise<DatabaseResult[]> {
+  return withRetry(async () => {
+    const res = await notionFetch(`${NOTION_BASE}/search`, {
+      method: "POST",
+      headers: notionHeaders(notionToken),
+      body: JSON.stringify({ filter: { property: "object", value: "database" } }),
+    });
+
+    if (!res.ok) {
+      const msg = await extractErrorMessage(res, "Failed to search Notion databases.");
+      throw mapNotionStatus(res.status, msg);
+    }
+
+    const data = (await res.json()) as { results: NotionDatabaseObject[] };
+    return (data.results ?? []).map((db) => ({
+      databaseId: db.id,
+      title: db.title?.map((t) => t.plain_text ?? "").join("") || "Untitled Database",
+      url: db.url,
+    }));
+  });
+}
+
 // ─── Create database ──────────────────────────────────────────────────────────
 
 export async function createDatabase(

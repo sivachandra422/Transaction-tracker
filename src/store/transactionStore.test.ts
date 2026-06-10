@@ -4,12 +4,21 @@ import type { Transaction } from "../types";
 import { useTransactionStore } from "./transactionStore";
 
 // Mock Dexie db so tests run without a real IndexedDB engine
+vi.mock("../services/syncEngine", () => ({
+  requestPush: vi.fn(),
+  syncNow: vi.fn().mockResolvedValue(false),
+}));
+
 vi.mock("../services/db", () => ({
   db: {
     transactions: {
       put: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn().mockResolvedValue(undefined),
+      bulkPut: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
       clear: vi.fn().mockResolvedValue(undefined),
+      toCollection: vi.fn().mockReturnValue({ modify: vi.fn().mockResolvedValue(0) }),
+      where: vi.fn().mockReturnValue({ equals: vi.fn().mockReturnValue({ toArray: vi.fn().mockResolvedValue([]) }) }),
       orderBy: vi.fn().mockReturnValue({
         reverse: vi.fn().mockReturnValue({
           toArray: vi.fn().mockResolvedValue([]),
@@ -30,6 +39,7 @@ const makeTx = (overrides: Partial<Transaction> = {}): Transaction => ({
   labels: ["lunch"],
   synced: false,
   createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
   ...overrides,
 });
 
@@ -66,12 +76,12 @@ describe("transactionStore", () => {
     expect(db.transactions.put).toHaveBeenCalledWith(expect.objectContaining({ id: "b" }));
   });
 
-  it("deleteTransaction removes by id and calls Dexie delete", async () => {
+  it("deleteTransaction removes by id and writes a soft-delete tombstone", async () => {
     const { db } = await import("../services/db");
     useTransactionStore.getState().addTransaction(makeTx({ id: "del-me" }));
     useTransactionStore.getState().deleteTransaction("del-me");
     expect(useTransactionStore.getState().transactions).toHaveLength(0);
-    expect(db.transactions.delete).toHaveBeenCalledWith("del-me");
+    expect(db.transactions.get).toHaveBeenCalledWith("del-me");
   });
 
   it("updateTransaction replaces the matching record", () => {
@@ -80,12 +90,12 @@ describe("transactionStore", () => {
     expect(useTransactionStore.getState().transactions[0].amount).toBe(999);
   });
 
-  it("clearTransactions empties the list and calls Dexie clear", async () => {
+  it("clearTransactions empties the list and tombstones all Dexie rows", async () => {
     const { db } = await import("../services/db");
     useTransactionStore.getState().addTransaction(makeTx());
     useTransactionStore.getState().clearTransactions();
     expect(useTransactionStore.getState().transactions).toHaveLength(0);
-    expect(db.transactions.clear).toHaveBeenCalled();
+    expect(db.transactions.toCollection).toHaveBeenCalled();
   });
 
   it("markSynced sets synced flag, notionPageId, and writes to Dexie", async () => {

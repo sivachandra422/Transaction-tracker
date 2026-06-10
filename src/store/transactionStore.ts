@@ -3,18 +3,16 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { Transaction, CategorizationRule } from "../types";
 import { DEFAULT_RULES, STORAGE_KEYS } from "../constants";
 import { db } from "../services/db";
-import {
-  sbUpsertTransaction,
-  sbDeleteTransaction,
-  sbFetchAllTransactions,
-  sbClearTransactions,
-} from "../services/supabase";
+import { requestPush, syncNow } from "../services/syncEngine";
+import { nowISO } from "../lib/format";
 
 interface TransactionState {
   transactions: Transaction[];
   rules: CategorizationRule[];
   hydrated: boolean;
   init: () => Promise<void>;
+  /** Reload in-memory list from Dexie (after background sync merges). */
+  rehydrate: () => Promise<void>;
   addTransaction: (tx: Transaction) => void;
   updateTransaction: (tx: Transaction) => void;
   deleteTransaction: (id: string) => void;
@@ -23,7 +21,16 @@ interface TransactionState {
   addRule: (rule: CategorizationRule) => void;
   deleteRule: (id: string) => void;
   resetRules: () => void;
-  syncFromSupabase: () => Promise<void>;
+}
+
+/** Live (non-tombstoned) rows, newest first. */
+async function loadLive(): Promise<Transaction[]> {
+  const all = await db.transactions.orderBy("createdAt").reverse().toArray();
+  return all.filter((t) => !t.deletedAt);
+}
+
+function stamp(tx: Transaction): Transaction {
+  return { ...tx, updatedAt: nowISO(), dirty: 1 };
 }
 
 export const useTransactionStore = create<TransactionState>()(
@@ -33,88 +40,76 @@ export const useTransactionStore = create<TransactionState>()(
       rules: DEFAULT_RULES,
       hydrated: false,
 
-      // ── Init: load from local Dexie, then merge remote Supabase ─────────────
       init: async () => {
-        const local = await db.transactions.orderBy("createdAt").reverse().toArray();
-        set({ transactions: local, hydrated: true });
+        set({ transactions: await loadLive(), hydrated: true });
+        // Background cloud sync; rehydrate if remote changes merged in.
+        void syncNow().then((changed) => {
+          if (changed) void get().rehydrate();
+        });
+      },
 
-        // Background: fetch remote and merge (offline-first)
-        try {
-          const remote = await sbFetchAllTransactions();
-          if (remote.length === 0) {
-            // Push local transactions up to Supabase on first connect
-            await Promise.all(local.map((tx) => sbUpsertTransaction(tx)));
-          } else {
-            // Merge: remote is source of truth for synced items
-            const localIds = new Set(local.map((t) => t.id));
-            const remoteOnly = remote.filter((t) => !localIds.has(t.id));
-            if (remoteOnly.length > 0) {
-              await db.transactions.bulkPut(remoteOnly);
-              const merged = await db.transactions.orderBy("createdAt").reverse().toArray();
-              set({ transactions: merged });
-            }
-          }
-        } catch {
-          // Network unavailable — use local only
-        }
+      rehydrate: async () => {
+        set({ transactions: await loadLive() });
       },
 
       addTransaction: (tx) => {
-        set((s) => ({ transactions: [tx, ...s.transactions] }));
-        db.transactions.put(tx).catch(console.error);
-        sbUpsertTransaction(tx).catch(console.error);
+        const stamped = stamp(tx);
+        set((s) => ({ transactions: [stamped, ...s.transactions] }));
+        db.transactions.put(stamped).catch(console.error);
+        requestPush();
       },
 
       updateTransaction: (tx) => {
+        const stamped = stamp(tx);
         set((s) => ({
-          transactions: s.transactions.map((t) => (t.id === tx.id ? tx : t)),
+          transactions: s.transactions.map((t) => (t.id === stamped.id ? stamped : t)),
         }));
-        db.transactions.put(tx).catch(console.error);
-        sbUpsertTransaction(tx).catch(console.error);
+        db.transactions.put(stamped).catch(console.error);
+        requestPush();
       },
 
       deleteTransaction: (id) => {
+        // Soft delete: tombstone locally so the deletion propagates to the cloud.
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) }));
-        db.transactions.delete(id).catch(console.error);
-        sbDeleteTransaction(id).catch(console.error);
+        db.transactions
+          .get(id)
+          .then((tx) => {
+            if (!tx) return;
+            return db.transactions.put({ ...stamp(tx), deletedAt: nowISO() });
+          })
+          .catch(console.error);
+        requestPush();
       },
 
       clearTransactions: () => {
+        const now = nowISO();
         set({ transactions: [] });
-        db.transactions.clear().catch(console.error);
-        sbClearTransactions().catch(console.error);
+        db.transactions
+          .toCollection()
+          .modify((t: Transaction) => {
+            t.deletedAt = now;
+            t.updatedAt = now;
+            t.dirty = 1;
+          })
+          .catch(console.error);
+        requestPush();
       },
 
       markSynced: (id, notionPageId, notionUrl) => {
         set((s) => {
           const updated = s.transactions.map((t) =>
-            t.id === id ? { ...t, synced: true, notionPageId, notionUrl } : t
+            t.id === id ? stamp({ ...t, synced: true, notionPageId, notionUrl }) : t
           );
           const synced = updated.find((t) => t.id === id);
-          if (synced) {
-            db.transactions.put(synced).catch(console.error);
-            sbUpsertTransaction(synced).catch(console.error);
-          }
+          if (synced) db.transactions.put(synced).catch(console.error);
           return { transactions: updated };
         });
+        requestPush();
       },
 
       addRule: (rule) => set((s) => ({ rules: [rule, ...s.rules] })),
       deleteRule: (id) => set((s) => ({ rules: s.rules.filter((r) => r.id !== id) })),
       resetRules: () => set({ rules: DEFAULT_RULES }),
-
-      syncFromSupabase: async () => {
-        try {
-          const remote = await sbFetchAllTransactions();
-          await db.transactions.clear();
-          if (remote.length > 0) await db.transactions.bulkPut(remote);
-          set({ transactions: remote });
-        } catch (err) {
-          console.error("[sync] Supabase pull failed:", err);
-        }
-      },
-
-      _unused: get,
     }),
     {
       name: STORAGE_KEYS.TRANSACTIONS,

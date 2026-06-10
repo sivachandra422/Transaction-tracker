@@ -1,27 +1,59 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# FinSnap Ledger
 
-# Run and deploy your AI Studio app
+Offline-first personal transaction tracker for Android (Capacitor) and web.
+Parses Indian bank UPI SMS alerts with AI, auto-categorizes spending, and syncs
+to your private Supabase cloud and Notion databases.
 
-This contains everything you need to run your app locally.
+## Architecture
 
-View your app in AI Studio: https://ai.studio/apps/fb6160b1-6c76-4277-838b-99e6847ddb32
+```
+src/
+  App.tsx                 Thin shell: auth gate, tab router, sync indicator
+  components/ui/          Design-system primitives (fintech dark theme)
+  components/             Shared widgets (AndroidFrame, BottomNav, TransactionRow, …)
+  features/
+    auth/                 Welcome / sign-up / sign-in (Supabase Auth)
+    dashboard/            Balance card, AI fast-entry, SMS simulator, filters, list
+    transactions/         Add / edit form with smart category suggestions
+    rules/                Keyword → category automation rules
+    analytics/            Donut, weekly trend, category rankings (Recharts)
+  hooks/                  useTransactionFilters, useCategorySuggestion, useNotionSync
+  store/                  Zustand stores (transactions, settings, sync, form draft)
+  services/
+    db.ts                 Dexie (IndexedDB) schema v2 — local source of truth
+    syncEngine.ts         Outbox push + cursor pull, last-write-wins merge
+    supabase.ts           Auth + cloud replica (RLS-protected)
+  lib/                    format, csv export, date ranges
+backend/                  Express API: AI parsing (Gemini/OpenRouter/OpenAI), Notion proxy
+api/index.ts              Vercel serverless entry
+supabase/migrations/      Postgres schema + row-level security policies
+```
 
-## Run Locally
+### Data flow (local-first)
 
-**Prerequisites:**  Node.js
+1. Every write lands in Dexie immediately and is marked `dirty`.
+2. The sync engine pushes dirty rows to Supabase (debounced, on reconnect, every 60 s).
+3. Pull fetches rows with `updated_at` newer than the last cursor; conflicts resolve
+   last-write-wins. Deletes propagate as soft-delete tombstones.
+4. The app works fully offline; the cloud catches up when you're back online.
 
+## Setup
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. `npm install`
+2. Copy `.env.example` → `.env.local`, fill in keys.
+3. Apply `supabase/migrations/0001_transactions.sql` in the Supabase SQL editor
+   (creates the `transactions` table with row-level security).
+4. `npm run dev` → http://localhost:3000
+
+## Scripts
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Express + Vite dev server |
+| `npm run build` | Web bundle + server bundle |
+| `npm run typecheck` / `lint` / `test` | Quality gates (also run in CI) |
 
 ## CI / CD
-
-Two GitHub Actions workflows run automatically:
 
 | Workflow | Trigger | What it does |
 |---|---|---|
@@ -31,13 +63,15 @@ Two GitHub Actions workflows run automatically:
 ### Release signing (Play Store AAB)
 
 Tag a release (`git tag v1.0.0 && git push --tags`) to trigger the signed AAB job.
-It requires four repository secrets — set them under **Settings → Secrets → Actions**:
+Required repository secrets: `KEYSTORE_BASE64`, `SIGNING_STORE_PASSWORD`,
+`SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`.
 
-| Secret | Value |
-|---|---|
-| `KEYSTORE_BASE64` | Base64-encoded `.jks` keystore (`base64 -w0 release.keystore`) |
-| `SIGNING_STORE_PASSWORD` | Keystore password |
-| `SIGNING_KEY_ALIAS` | Key alias inside the keystore |
-| `SIGNING_KEY_PASSWORD` | Key password |
+## Production checklist
 
-Without these secrets the release job is skipped; debug APK builds are always unsigned and need no secrets.
+- [x] Feature-modular frontend, no monoliths
+- [x] Local-first storage with cloud sync + RLS per-user isolation
+- [x] Supabase Auth (email/password)
+- [x] Rate-limited, zod-validated API with global error handler
+- [x] CORS restricted via `ALLOWED_ORIGINS`
+- [x] Secrets in env / secure storage, never committed
+- [x] CI: lint, typecheck, tests, build on every push

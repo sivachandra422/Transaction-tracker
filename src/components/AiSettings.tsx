@@ -11,7 +11,7 @@ interface AiSettingsProps {
 export default function AiSettings({ config, onSaveConfig, onClose }: AiSettingsProps) {
   const [provider, setProvider] = useState<LlmConfig["provider"]>(config.provider || "gemini");
   const [apiKey, setApiKey] = useState(config.apiKey || "");
-  const [model, setModel] = useState(config.model || "gemini-3.5-flash");
+  const [model, setModel] = useState(config.model || "gemini-2.5-flash");
   const [customModelInput, setCustomModelInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -19,8 +19,7 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
   // Suggested models per provider
   const PROVIDER_MODELS: Record<LlmConfig["provider"], Array<{ value: string; label: string; desc: string }>> = {
     gemini: [
-      { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash (Built-in / Fast)", desc: "Optimized speed & great extraction correctness." },
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Solid on-the-fly transactional analysis." },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Built-in / Fast)", desc: "Optimized speed & great extraction correctness." },
       { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Powerful)", desc: "Higher reasoning, perfect for challenging custom queries." }
     ],
     openrouter: [
@@ -40,7 +39,7 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
     setProvider(newProvider);
     // Auto-select standard default models
     if (newProvider === "gemini") {
-      setModel("gemini-3.5-flash");
+      setModel("gemini-2.5-flash");
     } else if (newProvider === "openrouter") {
       setModel("google/gemini-2.5-flash:free");
     } else {

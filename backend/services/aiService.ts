@@ -156,7 +156,7 @@ async function parseWithGemini(
   serverKey: string | undefined
 ): Promise<ParsedTransaction> {
   const { apiKey, model, text, image, imageType } = input;
-  const currentModel = model ?? "gemini-3.5-flash";
+  const currentModel = model ?? "gemini-2.5-flash";
 
   const keyToUse = apiKey?.trim() || serverKey;
   if (!keyToUse) throw new Error("GEMINI_API_KEY is not configured on the server.");

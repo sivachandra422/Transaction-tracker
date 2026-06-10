@@ -8,6 +8,7 @@ import {
 } from "../validators/notionValidators.js";
 import {
   searchPages,
+  searchDatabases,
   createDatabase,
   verifyDatabase,
   syncTransaction,
@@ -30,6 +31,21 @@ router.post(
 
     const pages = await searchPages(parsed.data.notionToken);
     res.json({ success: true, pages });
+  })
+);
+
+// ─── POST /api/notion/search-databases ───────────────────────────────────────
+router.post(
+  "/search-databases",
+  asyncHandler(async (req, res) => {
+    const parsed = searchPagesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: formatZodError(parsed.error) });
+      return;
+    }
+
+    const databases = await searchDatabases(parsed.data.notionToken);
+    res.json({ success: true, databases });
   })
 );
 

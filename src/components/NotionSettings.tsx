@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { NotionConfig } from "../types";
 import { Key, Database, RefreshCw, CheckCircle2, AlertTriangle, ExternalLink, Copy, Check, BookOpen, Sparkles, FileSpreadsheet, Settings } from "lucide-react";
-import { searchNotionPages, createNotionDatabase, verifyNotionDatabase } from "../services/notionApi";
+import { searchNotionPages, searchNotionDatabases, createNotionDatabase, verifyNotionDatabase, type NotionDatabase } from "../services/notionApi";
 
 interface NotionSettingsProps {
   config: NotionConfig;
@@ -21,6 +21,8 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
   // Auto-setup states
   const [isScanning, setIsScanning] = useState(false);
   const [scannedPages, setScannedPages] = useState<Array<{ id: string; title: string; url?: string }>>([]);
+  const [scannedDbs, setScannedDbs] = useState<NotionDatabase[]>([]);
+  const [connectingDbId, setConnectingDbId] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [scanStatus, setScanStatus] = useState<"idle" | "success" | "empty" | "error">("idle");
   const [scanMsg, setScanMsg] = useState("");
@@ -66,9 +68,15 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
     setScanStatus("idle");
     setScanMsg("");
     setScannedPages([]);
+    setScannedDbs([]);
 
     try {
-      const pages = await searchNotionPages(token);
+      // Databases scan is best-effort; pages scan drives the main flow
+      const [pages, dbs] = await Promise.all([
+        searchNotionPages(token),
+        searchNotionDatabases(token).catch(() => [] as NotionDatabase[]),
+      ]);
+      setScannedDbs(dbs);
       if (pages.length > 0) {
         setScannedPages(pages);
         setSelectedPageId(pages[0].id);
@@ -82,6 +90,33 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
       setScanMsg(err instanceof Error ? err.message : "Failed to scan workspace. Verify your Notion API token.");
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  // Connect to an EXISTING database (no duplicate creation)
+  const handleConnectExisting = async (db: NotionDatabase) => {
+    if (!token.trim()) return;
+    setConnectingDbId(db.databaseId);
+    setCreateStatus("idle");
+    setCreateMsg("");
+    try {
+      const info = await verifyNotionDatabase(token, db.databaseId);
+      setDatabaseId(db.databaseId);
+      setDbTitle(info.title);
+      setAutoSync(true);
+      setCreateStatus("success");
+      setCreateMsg(`Connected to existing database "${info.title}". No duplicate created.`);
+      onSaveConfig({
+        notionToken: token,
+        notionDatabaseId: db.databaseId,
+        autoSync: true,
+        databaseTitle: info.title,
+      });
+    } catch (err) {
+      setCreateStatus("error");
+      setCreateMsg(err instanceof Error ? err.message : "Could not connect to that database.");
+    } finally {
+      setConnectingDbId(null);
     }
   };
 
@@ -244,6 +279,49 @@ export default function NotionSettings({ config, onSaveConfig, onClose, onExport
                 )}
               </button>
             </div>
+
+            {/* Existing databases — connect instead of creating duplicates */}
+            {scannedDbs.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-dashed border-slate-100 dark:border-slate-800">
+                <label className="block text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                  Existing databases found — connect instead of creating a new one
+                </label>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {scannedDbs.map((db) => (
+                    <div
+                      key={db.databaseId}
+                      className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-2"
+                    >
+                      <span
+                        className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate"
+                        title={db.title}
+                      >
+                        {db.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleConnectExisting(db)}
+                        disabled={connectingDbId !== null}
+                        className={`shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-50 ${
+                          databaseId === db.databaseId
+                            ? "bg-emerald-600 border-emerald-500 text-white"
+                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/20"
+                        }`}
+                      >
+                        {connectingDbId === db.databaseId
+                          ? "Connecting…"
+                          : databaseId === db.databaseId
+                            ? "Connected"
+                            : "Use This"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9.5px] text-slate-400 dark:text-slate-500">
+                  Or create a brand-new ledger database below.
+                </p>
+              </div>
+            )}
 
             {/* Scan Results dropdown */}
             {scannedPages.length > 0 && (

@@ -35,6 +35,18 @@ export async function searchNotionPages(notionToken: string): Promise<NotionPage
   return data.pages;
 }
 
+export async function searchNotionDatabases(notionToken: string): Promise<NotionDatabase[]> {
+  const data = await apiFetch<{ success: boolean; databases: NotionDatabase[] }>(
+    "/api/notion/search-databases",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notionToken }),
+    }
+  );
+  return data.databases;
+}
+
 export async function createNotionDatabase(
   notionToken: string,
   parentPageId: string,

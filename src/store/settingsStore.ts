@@ -30,7 +30,7 @@ const DEFAULT_NOTION_CONFIG: NotionConfig = {
 const DEFAULT_LLM_CONFIG: LlmConfig = {
   provider: "gemini",
   apiKey: "",
-  model: "gemini-3.5-flash",
+  model: "gemini-2.5-flash",
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -88,6 +88,10 @@ export const useSettingsStore = create<SettingsState>()(
         const llmApiKey = secureGet(SECURE_KEYS.LLM_API_KEY);
         state.notionConfig = { ...state.notionConfig, notionToken };
         state.llmConfig = { ...state.llmConfig, apiKey: llmApiKey };
+        // Migrate legacy persisted model name (gemini-3.5-flash never existed)
+        if (state.llmConfig.model === "gemini-3.5-flash") {
+          state.llmConfig = { ...state.llmConfig, model: "gemini-2.5-flash" };
+        }
       },
     }
   )

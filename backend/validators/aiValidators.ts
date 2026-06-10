@@ -12,7 +12,7 @@ export const aiParseSchema = z.object({
   imageType: z.string().optional(),
   provider: z.enum(["gemini", "openrouter", "openai"]).default("gemini"),
   apiKey: z.string().optional().default(""),
-  model: z.string().optional().default("gemini-3.5-flash"),
+  model: z.string().optional().default("gemini-2.5-flash"),
 }).refine(
   (data) => !!(data.text?.trim() || data.image),
   { message: "Either text or image must be provided.", path: ["text"] }

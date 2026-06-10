@@ -5,12 +5,19 @@ export interface Transaction {
   merchant: string;
   category: "Food" | "Groceries" | "Transport" | "Utilities" | "Shopping" | "Entertainment" | "Housing" | "Income" | "Other";
   type: "expense" | "income";
-  date: string;
+  date: string; // YYYY-MM-DD
   labels: string[];
+  /** Synced to Notion */
   synced: boolean;
   notionPageId?: string;
   notionUrl?: string;
-  createdAt: string;
+  createdAt: string; // ISO timestamp
+  /** Last local modification — drives last-write-wins cloud merge */
+  updatedAt: string; // ISO timestamp
+  /** Soft-delete tombstone for cloud sync (null/undefined = live) */
+  deletedAt?: string | null;
+  /** 1 = pending cloud push (Dexie cannot index booleans) */
+  dirty?: 0 | 1;
 }
 
 export interface NotionConfig {
@@ -34,3 +41,4 @@ export interface CategorizationRule {
 
 export type CategoryType = Transaction["category"];
 
+export type TabId = "dashboard" | "add" | "rules" | "charts" | "notion" | "ai";
