@@ -13,6 +13,8 @@ interface AndroidFrameProps {
 
 export default function AndroidFrame({ children, title, onBack, showBack = false, actions, theme = "light", bottomNav }: AndroidFrameProps) {
   const [time, setTime] = useState("");
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [batteryCharging, setBatteryCharging] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -22,6 +24,26 @@ export default function AndroidFrame({ children, title, onBack, showBack = false
     updateTime();
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!("getBattery" in navigator)) return;
+    let battery: { level: number; charging: boolean; addEventListener: (e: string, h: () => void) => void; removeEventListener: (e: string, h: () => void) => void };
+    const onLevelChange = () => setBatteryLevel(Math.round(battery.level * 100));
+    const onChargingChange = () => setBatteryCharging(battery.charging);
+    (navigator as unknown as { getBattery: () => Promise<typeof battery> }).getBattery().then(b => {
+      battery = b;
+      setBatteryLevel(Math.round(b.level * 100));
+      setBatteryCharging(b.charging);
+      b.addEventListener("levelchange", onLevelChange);
+      b.addEventListener("chargingchange", onChargingChange);
+    });
+    return () => {
+      if (battery) {
+        battery.removeEventListener("levelchange", onLevelChange);
+        battery.removeEventListener("chargingchange", onChargingChange);
+      }
+    };
   }, []);
 
   return (
@@ -38,8 +60,11 @@ export default function AndroidFrame({ children, title, onBack, showBack = false
             <Signal className="w-3.5 h-3.5" />
             <Wifi className="w-3.5 h-3.5" />
             <div className="flex items-center gap-1">
-              <span className="text-[10px]">84%</span>
-              <Battery className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+              <span className="text-[10px]">
+                {batteryLevel !== null ? `${batteryLevel}%` : ""}
+                {batteryCharging && batteryLevel !== null ? " ⚡" : ""}
+              </span>
+              <Battery className={`w-4 h-4 ${batteryLevel !== null && batteryLevel <= 20 ? "text-red-400 fill-red-400/20" : "text-emerald-400 fill-emerald-400/20"}`} />
             </div>
           </div>
         </div>
