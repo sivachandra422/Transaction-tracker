@@ -8,9 +8,10 @@ interface AndroidFrameProps {
   showBack?: boolean;
   actions?: React.ReactNode;
   theme?: "light" | "dark";
+  bottomNav?: React.ReactNode;
 }
 
-export default function AndroidFrame({ children, title, onBack, showBack = false, actions, theme = "light" }: AndroidFrameProps) {
+export default function AndroidFrame({ children, title, onBack, showBack = false, actions, theme = "light", bottomNav }: AndroidFrameProps) {
   const [time, setTime] = useState("");
 
   useEffect(() => {
@@ -69,6 +70,9 @@ export default function AndroidFrame({ children, title, onBack, showBack = false
         <div id="android-app-viewport" className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0b121f] flex flex-col relative transition-colors duration-200">
           {children}
         </div>
+
+        {/* App-level bottom navigation (rendered outside the scroll area) */}
+        {bottomNav}
 
         {/* Bottom Material Touch navigation pill */}
         <div className="bg-slate-950 dark:bg-[#040711] text-slate-400 py-3 px-12 flex justify-between items-center select-none border-t border-slate-900 dark:border-white/5 z-40 transition-colors">

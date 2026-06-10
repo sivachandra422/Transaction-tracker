@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import AndroidFrame from "./components/AndroidFrame";
+import BottomNav from "./components/BottomNav";
 import NotionSettings from "./components/NotionSettings";
 import AiSettings from "./components/AiSettings";
 import { Transaction, CategoryType } from "./types";
@@ -10,7 +12,7 @@ import { parseTransactionAi } from "./services/aiApi";
 import { syncToNotion } from "./services/notionApi";
 import { CATEGORIES, CATEGORY_COLORS, DEFAULT_HEURISTICS } from "./constants";
 import {
-  Plus, Database, Trash2, Check, CheckCircle2,
+  Database, Trash2, Check, CheckCircle2,
   RefreshCw, Sparkles, ArrowRight, Search,
   Building2, Calendar, Tag, CheckCheck, FileImage, X,
   TrendingDown, TrendingUp, Wallet, PieChart as PieIcon, Sliders, Play,
@@ -779,6 +781,25 @@ export default function App() {
           )}
         </div>
       }
+      bottomNav={
+        currentUser ? (
+          <BottomNav
+            activeTab={activeTab}
+            onTabChange={(tab) => {
+              if (tab === "add") {
+                setEditingTxId(null);
+                setTxAmount("");
+                setTxDescription("");
+                setTxMerchant("");
+                setTxLabels("");
+                setTxCategory("Other");
+                setHasUserManuallySetCategory(false);
+              }
+              setActiveTab(tab);
+            }}
+          />
+        ) : null
+      }
     >
       {/* Floating System Push Notification banner simulating real-time Android interception */}
       {activeIncomingToast && (
@@ -1036,10 +1057,10 @@ export default function App() {
       )}
 
       {currentUser && (
-        <>
+        <AnimatePresence mode="wait">
           {/* 1. HOME DASHBOARD SHEET */}
           {activeTab === "dashboard" && (
-        <div className="flex-1 bg-slate-50 dark:bg-[#0b121f] text-slate-800 dark:text-slate-100 flex flex-col p-4 space-y-4 transition-colors">
+        <motion.div key="dashboard" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="flex-1 bg-slate-50 dark:bg-[#0b121f] text-slate-800 dark:text-slate-100 flex flex-col p-4 space-y-4 transition-colors">
           
           {/* Real-time Financial Wallet Summary Card */}
           <div id="wallet-summary-card" className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-5 rounded-3xl text-white shadow-xl relative overflow-hidden">
@@ -1306,59 +1327,28 @@ export default function App() {
             )}
           </div>
 
-          {/* Quick Actions Bar */}
-          <div className="grid grid-cols-4 gap-2 text-center text-xs">
-            <button 
-              id="quick-add-btn"
-              onClick={() => {
-                setEditingTxId(null);
-                setTxAmount("");
-                setTxDescription("");
-                setTxMerchant("");
-                setTxLabels("");
-                setTxCategory("Other");
-                setHasUserManuallySetCategory(false);
-                setActiveTab("add");
-              }}
-              className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex flex-col items-center gap-1.5 focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer text-slate-800 dark:text-slate-100 transition-colors"
-            >
-              <div className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 p-2 rounded-xl">
-                <Plus className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-[11px]">Add New</span>
-            </button>
-
-            <button 
-              id="quick-rules-btn"
-              onClick={() => setActiveTab("rules")}
-              className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex flex-col items-center gap-1.5 shadow-sm cursor-pointer text-slate-800 dark:text-slate-100 transition-colors"
-            >
-              <div className="bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 p-2 rounded-xl">
-                <Sliders className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-[11px]">Auto Rules</span>
-            </button>
-
-            <button 
-              id="quick-charts-btn"
+          {/* Shortcut strip — navigation now lives in the bottom nav */}
+          <div className="flex items-center gap-2">
+            <button
               onClick={() => setActiveTab("charts")}
-              className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex flex-col items-center gap-1.5 shadow-sm cursor-pointer text-slate-800 dark:text-slate-100 transition-colors"
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 flex flex-col items-center gap-1 shadow-xs cursor-pointer hover:border-sky-300 dark:hover:border-sky-800 transition-colors"
             >
-              <div className="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 p-2 rounded-xl">
-                <PieIcon className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-[11px]">Metrics</span>
+              <PieIcon className="w-4 h-4 text-sky-500" />
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Charts</span>
             </button>
-
-            <button 
-              id="quick-notion-btn"
-              onClick={() => setActiveTab("notion")}
-              className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex flex-col items-center gap-1.5 shadow-sm cursor-pointer text-slate-800 dark:text-slate-100 transition-colors"
+            <button
+              onClick={() => setActiveTab("rules")}
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 flex flex-col items-center gap-1 shadow-xs cursor-pointer hover:border-amber-300 dark:hover:border-amber-800 transition-colors"
             >
-              <div className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-2 rounded-xl">
-                <Database className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-[11px]">Notion</span>
+              <Sliders className="w-4 h-4 text-amber-500" />
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Rules</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("notion")}
+              className="flex-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl py-3 flex flex-col items-center gap-1 shadow-xs cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors"
+            >
+              <Database className="w-4 h-4 text-emerald-500" />
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Sync</span>
             </button>
           </div>
 
@@ -1634,21 +1624,21 @@ export default function App() {
                       </div>
 
                       {/* Line Sync / Edit Toolbar */}
-                      <div className="flex items-center justify-end gap-2.5">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           title="Edit transaction details"
                           onClick={() => triggerEdit(tx)}
                           id={`btn-edit-tx-${tx.id}`}
-                          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-md"
+                          className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 py-2 px-2.5 rounded-lg min-h-[36px] flex items-center cursor-pointer"
                         >
                           Edit
                         </button>
-                        
+
                         <button
                           title="Delete record locally"
                           onClick={() => triggerDelete(tx.id)}
                           id={`btn-delete-tx-${tx.id}`}
-                          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-md"
+                          className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 py-2 px-2.5 rounded-lg min-h-[36px] flex items-center cursor-pointer"
                         >
                           Delete
                         </button>
@@ -1658,7 +1648,7 @@ export default function App() {
                           onClick={() => syncSingleToNotion(tx)}
                           title={tx.synced ? "Synced to Notion Database" : "Sync directly to Notion now"}
                           id={`btn-sync-tx-${tx.id}`}
-                          className={`flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-lg border cursor-pointer transition-all ${
+                          className={`flex items-center gap-1 text-[11px] font-bold px-2 py-2 min-h-[36px] rounded-lg border cursor-pointer transition-all ${
                             syncStatus === "success" 
                               ? "bg-slate-900 dark:bg-slate-950 border-slate-900 dark:border-slate-800 text-amber-400 dark:text-amber-400 hover:bg-slate-850 dark:hover:bg-slate-905" 
                               : syncStatus === "pending"
@@ -1678,12 +1668,12 @@ export default function App() {
               })
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 2. ADD / EDIT TRANSACTION PANEL SHEET */}
       {activeTab === "add" && (
-        <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 transition-colors">
+        <motion.div key="add" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 transition-colors">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">
               {editingTxId ? "✏️ Edit Transaction" : "📝 Add Transaction Detail"}
@@ -1911,12 +1901,12 @@ export default function App() {
               {editingTxId ? "Confirm & Update Details" : "Record Local Transaction"}
             </button>
           </form>
-        </div>
+        </motion.div>
       )}
 
       {/* 3. MANAGE CUSTOM CATEGORIZATION RULES SHEET */}
       {activeTab === "rules" && (
-        <div className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 space-y-4 transition-colors">
+        <motion.div key="rules" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="flex-1 bg-slate-50 dark:bg-slate-950 flex flex-col p-4 space-y-4 transition-colors">
           <div className="flex items-center gap-2">
             <div className="bg-amber-100 dark:bg-amber-950/40 text-amber-850 dark:text-amber-400 p-2 rounded-xl">
               <Sliders className="w-5 h-5 animate-pulse" />
@@ -2027,12 +2017,12 @@ export default function App() {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 4. STATISTICS BREAKDOWN METRICS TAB */}
       {activeTab === "charts" && (
-        <div className="flex-1 bg-slate-50 dark:bg-slate-955 flex flex-col p-4 space-y-4 transition-colors">
+        <motion.div key="charts" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="flex-1 bg-slate-50 dark:bg-slate-955 flex flex-col p-4 space-y-4 transition-colors">
           <div className="flex items-center gap-2">
             <div className="bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-400 p-2 rounded-xl">
               <PieIcon className="w-5 h-5 animate-pulse" />
@@ -2194,12 +2184,13 @@ export default function App() {
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 5. NOTION SYNC CONFIGURATION SHEET */}
       {activeTab === "notion" && (
-        <NotionSettings
+        <motion.div key="notion" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 flex flex-col">
+          <NotionSettings
           config={notionConfig}
           onSaveConfig={async (updated) => {
             setNotionConfig(updated);
@@ -2222,17 +2213,20 @@ export default function App() {
           onClose={() => setActiveTab("dashboard")}
           onExportToExcel={exportToExcel}
         />
+        </motion.div>
       )}
 
       {/* 6. AI PROVIDER CONFIGURATION SHEET */}
       {activeTab === "ai" && (
-        <AiSettings 
-          config={llmConfig}
-          onSaveConfig={(updated) => setLlmConfig(updated)}
-          onClose={() => setActiveTab("dashboard")}
-        />
+        <motion.div key="ai" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 flex flex-col">
+          <AiSettings
+            config={llmConfig}
+            onSaveConfig={(updated) => setLlmConfig(updated)}
+            onClose={() => setActiveTab("dashboard")}
+          />
+        </motion.div>
       )}
-        </>
+        </AnimatePresence>
       )}
     </AndroidFrame>
   );
