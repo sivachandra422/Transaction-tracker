@@ -2,7 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import AndroidFrame from "./components/AndroidFrame";
 import NotionSettings from "./components/NotionSettings";
 import AiSettings from "./components/AiSettings";
-import { Transaction, NotionConfig, CategorizationRule, CategoryType, LlmConfig } from "./types";
+import { Transaction, CategoryType } from "./types";
+import { useTransactionStore } from "./store/transactionStore";
+import { useSettingsStore } from "./store/settingsStore";
+import { useSyncStore } from "./store/syncStore";
+import { parseTransactionAi } from "./services/aiApi";
+import { syncToNotion } from "./services/notionApi";
+import { CATEGORIES, CATEGORY_COLORS, DEFAULT_HEURISTICS } from "./constants";
 import { 
   Plus, Settings, Home, PlusCircle, Database, Trash2, Check, CheckCircle2, 
   AlertTriangle, RefreshCw, FileText, Sparkles, List, ArrowRight, Search, 
@@ -15,71 +21,38 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line 
 } from "recharts";
 
-// List of available categories
-const CATEGORIES: CategoryType[] = [
-  "Food", "Groceries", "Transport", "Utilities", "Shopping", "Entertainment", "Housing", "Income", "Other"
-];
-
-// Aesthetic Category Colors corresponding to Material Design palette
-const CATEGORY_COLORS: Record<CategoryType, string> = {
-  "Food": "#fb923c",          // Orange
-  "Groceries": "#4ade80",     // Mint/Green
-  "Transport": "#38bdf8",     // Sky Blue
-  "Utilities": "#facc15",     // Sun Yellow
-  "Shopping": "#ec4899",      // Pink
-  "Entertainment": "#a855f7", // Violet
-  "Housing": "#f87171",       // Soft Red
-  "Income": "#10b981",        // Emerald
-  "Other": "#94a3b8"          // Cool Gray
-};
-
-// Global heuristic auto-matching keywords (fallback when user rules do not match)
-const DEFAULT_HEURISTICS: { keywords: string[]; category: CategoryType }[] = [
-  { keywords: ["supermarket", "blinkit", "zepto", "instamart", "bigbasket", "reliance fresh", "grocery", "groceries", "market", "more retail", "jiomart", "star bazaar", "nature's basket"], category: "Groceries" },
-  { keywords: ["swiggy", "zomato", "restaurant", "cafe", "coffee", "starbucks", "mcdonald", "burger", "pizza", "subway", "dinner", "lunch", "breakfast", "eats", "diner", "blue tokai", "chaayos", "chai point", "biryani", "dhaba"], category: "Food" },
-  { keywords: ["uber", "ola", "namma yatri", "rapido", "taxi", "metro", "bus", "train", "transit", "gas", "petrol", "fuel", "shell", "iocl", "hpcl", "bpcl", "auto"], category: "Transport" },
-  { keywords: ["bescom", "electricity", "water bill", "utility", "internet", "wifi", "power bill", "jio", "airtel", "vi", "bsnl", "dth", "recharge", "broadband", "act fibernet", "tata play"], category: "Utilities" },
-  { keywords: ["amazon", "flipkart", "myntra", "ajio", "meesho", "nykaa", "shopping", "clothing", "shoes", "mall", "zara", "h&m", "decathlon", "tata cliq"], category: "Shopping" },
-  { keywords: ["netflix", "spotify", "bookmyshow", "bms", "ticket", "cinema", "movie", "theater", "gaming", "steam", "youtube premium", "hotstar", "prime video", "sony liv"], category: "Entertainment" },
-  { keywords: ["rent", "mortgage", "housing", "landlord", "apartment", "maid", "cook", "society", "maintenance"], category: "Housing" },
-  { keywords: ["salary", "paycheck", "freelance", "dividend", "interest", "upi receive", "bonus", "commission", "part-time"], category: "Income" }
-];
-
-const INITIAL_TRANSACTIONS: Transaction[] = [];
-
-const DEFAULT_RULES: CategorizationRule[] = [
-  { id: "rule-1", keyword: "swiggy", category: "Food" },
-  { id: "rule-2", keyword: "zomato", category: "Food" },
-  { id: "rule-3", keyword: "blinkit", category: "Groceries" },
-  { id: "rule-4", keyword: "zepto", category: "Groceries" },
-  { id: "rule-5", keyword: "bigbasket", category: "Groceries" },
-  { id: "rule-6", keyword: "uber", category: "Transport" },
-  { id: "rule-7", keyword: "ola", category: "Transport" },
-  { id: "rule-8", keyword: "rapido", category: "Transport" },
-  { id: "rule-9", keyword: "jio", category: "Utilities" },
-  { id: "rule-10", keyword: "airtel", category: "Utilities" },
-  { id: "rule-11", keyword: "salary", category: "Income" }
-];
 
 export default function App() {
-  // User Session State (Onboarding & Authentication)
-  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(() => {
-    const saved = localStorage.getItem("android_tracker_user");
-    return saved ? JSON.parse(saved) : null;
-  });
+  // ─── Global stores ─────────────────────────────────────────────────────────
+  const {
+    theme, setTheme,
+    currentUser, setCurrentUser, logOut,
+    notionConfig, setNotionConfig,
+    llmConfig, setLlmConfig,
+  } = useSettingsStore();
 
+  const {
+    transactions, rules,
+    hydrated, init,
+    addTransaction, updateTransaction, deleteTransaction, clearTransactions,
+    markSynced, addRule, deleteRule, resetRules,
+  } = useTransactionStore();
+
+  const { syncLogs, setSyncPending, setSyncSuccess, setSyncError } = useSyncStore();
+
+  // Boot IndexedDB → in-memory store on first render
+  useEffect(() => {
+    init().catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Local UI state ─────────────────────────────────────────────────────────
   const [onboardingStep, setOnboardingStep] = useState<"welcome" | "signup" | "signin">("welcome");
   const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", agreed: true });
   const [signinForm, setSigninForm] = useState({ email: "", password: "" });
   const [authError, setAuthError] = useState("");
 
-  // Theme State
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    const saved = localStorage.getItem("android_tracker_theme");
-    return (saved as "light" | "dark") || "light";
-  });
-
-  // Navigation State
+  // ─── Navigation ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"dashboard" | "add" | "rules" | "charts" | "notion" | "ai">("dashboard");
 
   const handleSignUp = (e: React.FormEvent) => {
@@ -102,7 +75,6 @@ export default function App() {
     }
 
     const userData = { email: signupForm.email.trim(), name: signupForm.name.trim() };
-    localStorage.setItem("android_tracker_user", JSON.stringify(userData));
     setCurrentUser(userData);
   };
 
@@ -122,37 +94,14 @@ export default function App() {
 
     const name = signinForm.email.split("@")[0];
     const userData = { email: signinForm.email.trim(), name: name.charAt(0).toUpperCase() + name.slice(1) };
-    localStorage.setItem("android_tracker_user", JSON.stringify(userData));
     setCurrentUser(userData);
   };
 
   const handleLogOut = () => {
-    localStorage.removeItem("android_tracker_user");
-    setCurrentUser(null);
+    logOut();
     setOnboardingStep("welcome");
     setActiveTab("dashboard");
   };
-
-  // Core Data States
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem("android_tracker_transactions");
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-  });
-
-  const [rules, setRules] = useState<CategorizationRule[]>(() => {
-    const saved = localStorage.getItem("android_tracker_rules");
-    return saved ? JSON.parse(saved) : DEFAULT_RULES;
-  });
-
-  const [notionConfig, setNotionConfig] = useState<NotionConfig>(() => {
-    const saved = localStorage.getItem("android_tracker_notion_config");
-    return saved ? JSON.parse(saved) : { notionToken: "", notionDatabaseId: "", autoSync: false };
-  });
-
-  const [llmConfig, setLlmConfig] = useState<LlmConfig>(() => {
-    const saved = localStorage.getItem("android_tracker_llm_config");
-    return saved ? JSON.parse(saved) : { provider: "gemini", apiKey: "", model: "gemini-3.5-flash" };
-  });
 
   // UI / Interaction States
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,29 +184,10 @@ export default function App() {
   // Editing transaction state (if editing existing)
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
 
-  // Bulk / Sync status state
-  const [syncLogs, setSyncLogs] = useState<Record<string, { status: "pending" | "success" | "error"; msg?: string }>>({});
 
   // Custom User Rules addition state
   const [newRuleKeyword, setNewRuleKeyword] = useState("");
   const [newRuleCategory, setNewRuleCategory] = useState<CategoryType>("Food");
-
-  // Save changes to localStorage on data updates
-  useEffect(() => {
-    localStorage.setItem("android_tracker_transactions", JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem("android_tracker_rules", JSON.stringify(rules));
-  }, [rules]);
-
-  useEffect(() => {
-    localStorage.setItem("android_tracker_notion_config", JSON.stringify(notionConfig));
-  }, [notionConfig]);
-
-  useEffect(() => {
-    localStorage.setItem("android_tracker_llm_config", JSON.stringify(llmConfig));
-  }, [llmConfig]);
 
   // Automatic Categorization Hook
   // Suggest category based on description & merchant changes
@@ -323,38 +253,14 @@ export default function App() {
     setAiParseError("");
 
     try {
-      const payload: any = {
+      const info = await parseTransactionAi({
         provider: llmConfig.provider,
         apiKey: llmConfig.apiKey,
-        model: llmConfig.model
-      };
-      if (fastEntryText.trim()) {
-        payload.text = fastEntryText;
-      }
-      if (receiptBase64) {
-        payload.image = receiptBase64;
-        payload.imageType = "image/jpeg"; // default schema
-      }
-
-      const res = await fetch("/api/gemini/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        model: llmConfig.model,
+        ...(fastEntryText.trim() && { text: fastEntryText }),
+        ...(receiptBase64 && { image: receiptBase64, imageType: "image/jpeg" }),
       });
 
-      const contentType = res.headers.get("content-type");
-      let info;
-      if (contentType && contentType.includes("application/json")) {
-        info = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(`Server returned an unexpected response (status code: ${res.status}). This may happen during server updates. Please retry in a few seconds.`);
-      }
-
-      if (!res.ok) {
-        throw new Error(info?.error || "Failed to parse transaction data.");
-      }
-      
       // Auto-fill form and display transaction creator
       setTxType(info.type === "income" ? "income" : "expense");
       setTxAmount(String(info.amount || ""));
@@ -364,7 +270,7 @@ export default function App() {
       
       // The AI extracts a recommended category. We display a recommendation confirmation notice.
       // We populate it in the dropdown but show the "🤖 Gemini suggested: [Category]" so they can change it.
-      setTxCategory(info.category || "Other");
+      setTxCategory((info.category || "Other") as CategoryType);
       setHasUserManuallySetCategory(false); // Enable suggestions notice if they tweak it
       
       if (info.labels && Array.isArray(info.labels)) {
@@ -439,29 +345,12 @@ export default function App() {
     });
 
     try {
-      const res = await fetch("/api/gemini/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          text: textToParse,
-          provider: llmConfig.provider,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.model
-        })
+      const info = await parseTransactionAi({
+        text: textToParse,
+        provider: llmConfig.provider,
+        apiKey: llmConfig.apiKey,
+        model: llmConfig.model,
       });
-
-      const contentType = res.headers.get("content-type");
-      let info;
-      if (contentType && contentType.includes("application/json")) {
-        info = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(`Server returned an unexpected response (status code: ${res.status}). This may happen during server updates. Please retry in a few seconds.`);
-      }
-
-      if (!res.ok) {
-        throw new Error(info?.error || "Failed to auto-parse simulated SMS.");
-      }
 
       // Update active toast to denote model interception type
       setActiveIncomingToast(prev => {
@@ -485,8 +374,8 @@ export default function App() {
         amount: info.amount || 0,
         description: info.description || "Simulated UPI Outgo",
         merchant: info.merchant || "Unknown Merchant",
-        category: info.category || "Other",
-        type: info.type || "expense",
+        category: (info.category || "Other") as CategoryType,
+        type: (info.type === "income" ? "income" : "expense") as "expense" | "income",
         date: info.date || new Date().toISOString().split('T')[0],
         labels: Array.from(new Set([...(info.labels || []), "sms-auto", "simulated", info.isFallback ? "heuristic" : "gemini"])) as string[],
         synced: false,
@@ -494,7 +383,7 @@ export default function App() {
       };
 
       // Add to transactions list
-      setTransactions(prev => [simulatedTx, ...prev]);
+      addTransaction(simulatedTx);
 
       // Trigger automatic sync to Notion if auto-sync is on
       if (notionConfig.notionToken && notionConfig.notionDatabaseId && notionConfig.autoSync) {
@@ -519,19 +408,16 @@ export default function App() {
   const handleCreateRule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRuleKeyword.trim()) return;
-
-    const newRule: CategorizationRule = {
+    addRule({
       id: `rule-${Date.now()}`,
       keyword: newRuleKeyword.trim().toLowerCase(),
-      category: newRuleCategory
-    };
-
-    setRules(prev => [newRule, ...prev]);
+      category: newRuleCategory,
+    });
     setNewRuleKeyword("");
   };
 
   const handleDeleteRule = (id: string) => {
-    setRules(prev => prev.filter(r => r.id !== id));
+    deleteRule(id);
   };
 
   const handleSaveTransaction = (e: React.FormEvent) => {
@@ -563,10 +449,10 @@ export default function App() {
     };
 
     if (editingTxId) {
-      setTransactions(prev => prev.map(t => t.id === editingTxId ? transactionData : t));
+      updateTransaction(transactionData);
       setEditingTxId(null);
     } else {
-      setTransactions(prev => [transactionData, ...prev]);
+      addTransaction(transactionData);
     }
 
     // AutoSync to Notion if configured and active
@@ -594,50 +480,26 @@ export default function App() {
       return;
     }
 
-    setSyncLogs(prev => ({ ...prev, [tx.id]: { status: "pending" } }));
+    // Skip already-synced transactions to prevent duplicate Notion pages
+    if (tx.synced && tx.notionPageId) {
+      setSyncSuccess(tx.id);
+      return;
+    }
+
+    setSyncPending(tx.id);
 
     try {
-      const response = await fetch("/api/notion/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          notionToken: notionConfig.notionToken,
-          notionDatabaseId: notionConfig.notionDatabaseId,
-          transaction: tx
-        })
-      });
-
-      const contentType = response.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error(`Server returned an unexpected response (status code: ${response.status}). This may happen during server updates. Please retry in a few seconds.`);
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Notion integration failed to write details.");
-      }
-
-      // Record updated sync fields
-      setTransactions(prev => prev.map(t => t.id === tx.id ? { 
-        ...t, 
-        synced: true, 
-        notionPageId: data.id, 
-        notionUrl: data.url 
-      } : t));
-
-      setSyncLogs(prev => ({
-        ...prev,
-        [tx.id]: { status: "success", msg: "Synced!" }
-      }));
-    } catch (err: any) {
+      const data = await syncToNotion(
+        notionConfig.notionToken,
+        notionConfig.notionDatabaseId,
+        tx
+      );
+      markSynced(tx.id, data.id, data.url);
+      setSyncSuccess(tx.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed";
       console.error(err);
-      setSyncLogs(prev => ({
-        ...prev,
-        [tx.id]: { status: "error", msg: err.message || "Failed" }
-      }));
+      setSyncError(tx.id, msg);
     }
   };
 
@@ -717,7 +579,7 @@ export default function App() {
 
   const triggerDelete = (id: string) => {
     if (confirm("Are you sure you want to delete this transaction from local storage?")) {
-      setTransactions(prev => prev.filter(t => t.id !== id));
+      deleteTransaction(id);
     }
   };
 
@@ -815,15 +677,27 @@ export default function App() {
 
   const weeklyTrendData = getWeeklyTrendData();
 
+  // Show a minimal loading screen while IndexedDB hydrates
+  if (!hydrated) {
+    return (
+      <AndroidFrame title="FinSnap Ledger" theme={theme}>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0b121f]">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Loading your ledger…</p>
+        </div>
+      </AndroidFrame>
+    );
+  }
+
   return (
-    <AndroidFrame 
+    <AndroidFrame
       title={
-        currentUser 
-          ? "Notion Smart Tracker" 
-          : onboardingStep === "signup" 
-            ? "Create Account" 
-            : onboardingStep === "signin" 
-              ? "Login Account" 
+        currentUser
+          ? "Notion Smart Tracker"
+          : onboardingStep === "signup"
+            ? "Create Account"
+            : onboardingStep === "signin"
+              ? "Login Account"
               : "Secure SMS Tracker"
       }
       showBack={currentUser ? activeTab !== "dashboard" : onboardingStep !== "welcome"}
@@ -841,11 +715,7 @@ export default function App() {
         <div className="flex items-center gap-1.5 animate-fadeIn">
           <button
             id="top-action-theme-toggle"
-            onClick={() => setTheme(prev => {
-              const updated = prev === "light" ? "dark" : "light";
-              localStorage.setItem("android_tracker_theme", updated);
-              return updated;
-            })}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
             className="text-slate-350 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center select-none shrink-0"
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
@@ -1526,7 +1396,7 @@ export default function App() {
                   <button 
                     onClick={() => {
                       if (window.confirm("Are you sure you want to clear your local ledger? All un-synced entries will be permanently deleted.")) {
-                        setTransactions([]);
+                        clearTransactions();
                       }
                     }}
                     className="text-[11px] text-red-500 hover:text-red-650 dark:text-red-400 dark:hover:text-red-300 font-bold hover:underline cursor-pointer flex items-center gap-1"
@@ -2111,7 +1981,7 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   if (confirm("Reset active rules to system default?")) {
-                    setRules(DEFAULT_RULES);
+                    resetRules();
                   }
                 }}
                 className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold"
@@ -2329,43 +2199,23 @@ export default function App() {
 
       {/* 5. NOTION SYNC CONFIGURATION SHEET */}
       {activeTab === "notion" && (
-        <NotionSettings 
+        <NotionSettings
           config={notionConfig}
-          onSaveConfig={(updated) => {
+          onSaveConfig={async (updated) => {
             setNotionConfig(updated);
-            // Proactively sync all currently unsynced transactions to Notion right after setup succeeds!
             const unsynced = transactions.filter(t => !t.synced);
             if (unsynced.length > 0 && updated.notionToken && updated.notionDatabaseId) {
-              setTimeout(() => {
+              setTimeout(async () => {
                 alert(`Successfully connected to Notion! Starting automatic synchronization of ${unsynced.length} existing transactions to your new database...`);
-                unsynced.forEach(async (tx) => {
+                for (const tx of unsynced) {
                   try {
-                    const response = await fetch("/api/notion/sync", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        notionToken: updated.notionToken,
-                        notionDatabaseId: updated.notionDatabaseId,
-                        transaction: tx
-                      })
-                    });
-                    if (response.ok) {
-                      const data = await response.json();
-                      setTransactions(prev => prev.map(t => t.id === tx.id ? { 
-                        ...t, 
-                        synced: true, 
-                        notionPageId: data.id, 
-                        notionUrl: data.url 
-                      } : t));
-                      setSyncLogs(prev => ({
-                        ...prev,
-                        [tx.id]: { status: "success", msg: "Synced!" }
-                      }));
-                    }
+                    const data = await syncToNotion(updated.notionToken, updated.notionDatabaseId, tx);
+                    markSynced(tx.id, data.id, data.url);
+                    setSyncSuccess(tx.id);
                   } catch (err) {
                     console.error("Auto Sync Fail for tx", tx.id, err);
                   }
-                });
+                }
               }, 600);
             }
           }}
