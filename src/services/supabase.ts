@@ -1,14 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Transaction } from "../types";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+// Public values — safe to commit (anon key has row-level security)
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string) ||
+  "https://fexbynoduaderbrjmqtz.supabase.co";
+const SUPABASE_ANON_KEY =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZleGJ5bm9kdWFkZXJicmptcXR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNjI5NzIsImV4cCI6MjA5NjYzODk3Mn0.sQHOXtqYC_CTqGAqdLMxL2-102BKB0DYw_pSxWJGdD0";
 
-// Supabase client — only created when env vars are present
-export const supabase =
-  SUPABASE_URL && SUPABASE_ANON_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    : null;
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
