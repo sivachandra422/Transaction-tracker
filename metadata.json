@@ -1,6 +1,0 @@
-{
-  "name": "Transaction Tracker",
-  "description": "An Android-styled transaction tracker that records expenses/income and synchronizes them directly to a Notion tracker database with smart labels.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
