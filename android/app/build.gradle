@@ -1,31 +1,72 @@
 apply plugin: 'com.android.application'
 
+// ── Auto-versioning from git ───────────────────────────────────────────────
+
+def gitVersionCode() {
+    try {
+        def proc = 'git rev-list --count HEAD'.execute()
+        proc.waitFor()
+        return proc.text.trim().toInteger()
+    } catch (ignored) { return 1 }
+}
+
+def gitVersionName() {
+    try {
+        def proc = 'git describe --tags --always --dirty'.execute()
+        proc.waitFor()
+        return proc.text.trim() ?: "1.0.0"
+    } catch (ignored) { return "1.0.0" }
+}
+
 android {
     namespace = "com.sivachandra.notiontracker"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    // ── Release signing — reads from CI environment variables ─────────────
+    def hasSigningEnv = System.getenv("SIGNING_STORE_FILE") &&
+                        System.getenv("SIGNING_STORE_PASSWORD") &&
+                        System.getenv("SIGNING_KEY_ALIAS") &&
+                        System.getenv("SIGNING_KEY_PASSWORD")
+
+    if (hasSigningEnv) {
+        signingConfigs {
+            release {
+                storeFile     file(System.getenv("SIGNING_STORE_FILE"))
+                storePassword System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias      System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword   System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     defaultConfig {
-        applicationId "com.sivachandra.notiontracker"
-        minSdkVersion rootProject.ext.minSdkVersion
+        applicationId  "com.sivachandra.notiontracker"
+        minSdkVersion   rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode     gitVersionCode()
+        versionName     gitVersionName()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
     buildTypes {
+        debug {
+            debuggable true
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasSigningEnv) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
 
 repositories {
-    flatDir{
+    flatDir {
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
@@ -49,6 +90,6 @@ try {
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
     }
-} catch(Exception e) {
+} catch (Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch } from "./apiClient";
 
 function mockFetch(response: Partial<Response> & { json?: () => Promise<unknown> }) {

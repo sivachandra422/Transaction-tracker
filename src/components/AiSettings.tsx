@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Key, Settings, HelpCircle, Cpu, Eye, EyeOff, Check, Sparkles, AlertCircle, Save, ArrowLeft } from "lucide-react";
+import { Key, Cpu, Eye, EyeOff, Check, Sparkles, Save, ArrowLeft } from "lucide-react";
 import type { LlmConfig } from "../types";
 
 interface AiSettingsProps {
