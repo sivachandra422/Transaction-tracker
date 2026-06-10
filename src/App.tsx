@@ -918,6 +918,7 @@ export default function App() {
                   I already have an account
                 </button>
               </div>
+              <p className="text-center text-[9px] text-slate-400 dark:text-slate-600 pt-2">v1.1.0 · Supabase sync enabled</p>
             </div>
           )}
 
