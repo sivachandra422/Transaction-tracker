@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion, AnimatePresence } from "motion/react";
 import AndroidFrame from "./components/AndroidFrame";
 import BottomNav from "./components/BottomNav";
+import TransactionRow from "./components/TransactionRow";
 import NotionSettings from "./components/NotionSettings";
 import AiSettings from "./components/AiSettings";
 import { Transaction, CategoryType } from "./types";
@@ -14,7 +16,7 @@ import { CATEGORIES, CATEGORY_COLORS, DEFAULT_HEURISTICS } from "./constants";
 import {
   Database, Trash2, Check, CheckCircle2,
   RefreshCw, Sparkles, ArrowRight, Search,
-  Building2, Calendar, Tag, CheckCheck, FileImage, X,
+  Calendar, CheckCheck, FileImage, X,
   TrendingDown, TrendingUp, Wallet, PieChart as PieIcon, Sliders, Play,
   Bell, Smartphone, MessageSquare, FileSpreadsheet, Cpu,
   Sun, Moon, User, Lock, Mail, LogOut, ShieldAlert
@@ -114,40 +116,37 @@ export default function App() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  // Helper to resolve effective date limits for the active period
+  // Helper to resolve effective date limits for the active period (kept for the time-period display)
   const getDateRangeLimits = () => {
-    const now = new Date(); // The current device date
-
+    const now = new Date();
     switch (dateRangePreset) {
       case "week": {
-        // Current week (starting on Monday)
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
-        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
-        startOfWeek.setDate(diff);
+        startOfWeek.setDate(startOfWeek.getDate() - day + (day === 0 ? -6 : 1));
         startOfWeek.setHours(0, 0, 0, 0);
-        
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
         return { start: startOfWeek, end: endOfWeek };
       }
       case "month": {
-        // Current calendar month
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        return { start: startOfMonth, end: endOfMonth };
+        return {
+          start: new Date(now.getFullYear(), now.getMonth(), 1),
+          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+        };
       }
       case "last_month": {
-        // Last calendar month
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-        return { start: startOfLastMonth, end: endOfLastMonth };
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
+        };
       }
       case "custom": {
-        const start = customStartDate ? new Date(customStartDate + "T00:00:00") : null;
-        const end = customEndDate ? new Date(customEndDate + "T23:59:59") : null;
-        return { start, end };
+        return {
+          start: customStartDate ? new Date(customStartDate + "T00:00:00") : null,
+          end: customEndDate ? new Date(customEndDate + "T23:59:59") : null,
+        };
       }
       case "all":
       default:
@@ -566,7 +565,100 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  const triggerEdit = (tx: Transaction) => {
+  // Memoized date range limits — inline to keep deps explicit
+  const dateRangeLimits = useMemo(() => {
+    const now = new Date();
+    switch (dateRangePreset) {
+      case "week": {
+        const s = new Date(now);
+        const day = s.getDay();
+        s.setDate(s.getDate() - day + (day === 0 ? -6 : 1));
+        s.setHours(0, 0, 0, 0);
+        const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999);
+        return { start: s, end: e };
+      }
+      case "month":
+        return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999) };
+      case "last_month":
+        return { start: new Date(now.getFullYear(), now.getMonth() - 1, 1), end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999) };
+      case "custom":
+        return { start: customStartDate ? new Date(customStartDate + "T00:00:00") : null, end: customEndDate ? new Date(customEndDate + "T23:59:59") : null };
+      default:
+        return { start: null, end: null };
+    }
+  }, [dateRangePreset, customStartDate, customEndDate]);
+
+  // Memoized filtered list — only recomputes when inputs change
+  const filteredTransactions = useMemo(() => transactions.filter(t => {
+    const s = searchQuery.toLowerCase().trim();
+    const matchesSearch = s === "" ||
+      t.description.toLowerCase().includes(s) ||
+      t.merchant.toLowerCase().includes(s) ||
+      t.labels.some(l => l.toLowerCase().includes(s)) ||
+      t.category.toLowerCase().includes(s);
+
+    const matchesCategory = selectedCategoryFilter === "All" || t.category === selectedCategoryFilter;
+
+    let matchesDate = true;
+    const { start, end } = dateRangeLimits;
+    if (start || end) {
+      // mid-day comparison avoids UTC/local date rollover
+      const txTime = new Date(t.date + "T12:00:00").getTime();
+      if (start && txTime < start.getTime()) matchesDate = false;
+      if (end && txTime > end.getTime()) matchesDate = false;
+    }
+
+    return matchesSearch && matchesCategory && matchesDate;
+  }), [transactions, searchQuery, selectedCategoryFilter, dateRangeLimits]);
+
+  // Memoized financial summaries
+  const totalIncome = useMemo(
+    () => filteredTransactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0),
+    [filteredTransactions]
+  );
+  const totalExpense = useMemo(
+    () => filteredTransactions.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0),
+    [filteredTransactions]
+  );
+  const netBalance = useMemo(() => totalIncome - totalExpense, [totalIncome, totalExpense]);
+
+  // Memoized chart data
+  const chartData = useMemo(() => Object.keys(CATEGORY_COLORS).map(catName => {
+    const amt = filteredTransactions
+      .filter(t => t.category === catName && t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+    return { name: catName, value: parseFloat(amt.toFixed(2)), color: CATEGORY_COLORS[catName as CategoryType] };
+  }).filter(item => item.value > 0), [filteredTransactions]);
+
+  const totalExpenseForCharts = useMemo(
+    () => chartData.reduce((sum, item) => sum + item.value, 0),
+    [chartData]
+  );
+
+  // Memoized weekly trend (depends on raw transactions, not filtered)
+  const weeklyTrendData = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const trendData = [];
+    for (let i = 6; i >= 0; i--) {
+      const cur = new Date(today); cur.setDate(today.getDate() - i);
+      const prev = new Date(today); prev.setDate(today.getDate() - i - 7);
+      const strCur = cur.toISOString().split('T')[0];
+      const strPrev = prev.toISOString().split('T')[0];
+      trendData.push({
+        dayName: i === 0 ? "Today" : cur.toLocaleDateString("en-US", { weekday: "short" }),
+        currentDate: strCur,
+        previousDate: strPrev,
+        "Last 7 Days (₹)": parseFloat(transactions.filter(t => t.type === "expense" && t.date === strCur).reduce((s, t) => s + t.amount, 0).toFixed(2)),
+        "Previous 7 Days (₹)": parseFloat(transactions.filter(t => t.type === "expense" && t.date === strPrev).reduce((s, t) => s + t.amount, 0).toFixed(2)),
+      });
+    }
+    return trendData;
+  }, [transactions]);
+
+  // Stable callbacks for TransactionRow — inline bodies so deps are explicit
+  // useState setters (setEditingTxId etc.) are stable references, so deps array is empty
+  const handleEditRow = useCallback((tx: Transaction) => {
     setEditingTxId(tx.id);
     setTxType(tx.type);
     setTxAmount(String(tx.amount));
@@ -575,109 +667,41 @@ export default function App() {
     setTxDate(tx.date);
     setTxCategory(tx.category);
     setTxLabels(tx.labels.join(", "));
-    setHasUserManuallySetCategory(true); // Don't trigger auto rules right away on editing
+    setHasUserManuallySetCategory(true);
     setActiveTab("add");
-  };
+  }, []);
 
-  const triggerDelete = (id: string) => {
+  const handleDeleteRow = useCallback((id: string) => {
     if (confirm("Are you sure you want to delete this transaction from local storage?")) {
       deleteTransaction(id);
     }
-  };
+  }, [deleteTransaction]);
 
-  // Filtered lists
-  const filteredTransactions = transactions.filter(t => {
-    const s = searchQuery.toLowerCase().trim();
-    const matchesSearch = s === "" || 
-      t.description.toLowerCase().includes(s) || 
-      t.merchant.toLowerCase().includes(s) ||
-      t.labels.some(l => l.toLowerCase().includes(s)) ||
-      t.category.toLowerCase().includes(s);
-
-    const matchesCategory = selectedCategoryFilter === "All" || t.category === selectedCategoryFilter;
-
-    // Date range constraint checking
-    let matchesDate = true;
-    const { start, end } = getDateRangeLimits();
-    if (start || end) {
-      // mid-day timestamp comparison to prevent UTC/local date rollover complications
-      const txTime = new Date(t.date + "T12:00:00").getTime();
-      if (start && txTime < start.getTime()) {
-        matchesDate = false;
-      }
-      if (end && txTime > end.getTime()) {
-        matchesDate = false;
-      }
+  const handleSyncRow = useCallback(async (tx: Transaction) => {
+    if (!notionConfig.notionToken || !notionConfig.notionDatabaseId) {
+      alert("Please configure your Notion workspace credentials from the Notion tab first.");
+      setActiveTab("notion");
+      return;
     }
+    if (tx.synced && tx.notionPageId) { setSyncSuccess(tx.id); return; }
+    setSyncPending(tx.id);
+    try {
+      const data = await syncToNotion(notionConfig.notionToken, notionConfig.notionDatabaseId, tx);
+      markSynced(tx.id, data.id, data.url);
+      setSyncSuccess(tx.id);
+    } catch (err) {
+      setSyncError(tx.id, err instanceof Error ? err.message : "Failed");
+    }
+  }, [notionConfig, markSynced, setSyncPending, setSyncSuccess, setSyncError]);
 
-    return matchesSearch && matchesCategory && matchesDate;
+  // Virtual list scroll container ref (must be at hook level, not inside JSX)
+  const txListRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: filteredTransactions.length,
+    getScrollElement: () => txListRef.current,
+    estimateSize: () => 96, // ~80px row + 10px mb gap; dynamic measurement via measureElement
+    overscan: 4,
   });
-
-  // Calculations for Financial Summary Banner based dynamically on filter parameters
-  const totalIncome = filteredTransactions
-    .filter(t => t.type === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalExpense = filteredTransactions
-    .filter(t => t.type === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netBalance = totalIncome - totalExpense;
-
-  // Recharts Chart breakdown formatting: Category totals of filtered subset
-  const chartData = Object.keys(CATEGORY_COLORS).map(catName => {
-    const amt = filteredTransactions
-      .filter(t => t.category === catName && t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    return {
-      name: catName,
-      value: parseFloat(amt.toFixed(2)),
-      color: CATEGORY_COLORS[catName as CategoryType]
-    };
-  }).filter(item => item.value > 0);
-
-  const totalExpenseForCharts = chartData.reduce((sum, item) => sum + item.value, 0);
-
-  // Weekly spend trend analysis (Last 7 Days vs. Previous 7 Days)
-  const getWeeklyTrendData = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const trendData = [];
-    
-    for (let i = 6; i >= 0; i--) {
-      const targetDateCurrent = new Date(today);
-      targetDateCurrent.setDate(today.getDate() - i);
-      const strCurrent = targetDateCurrent.toISOString().split('T')[0];
-
-      const targetDatePrevious = new Date(today);
-      targetDatePrevious.setDate(today.getDate() - i - 7);
-      const strPrevious = targetDatePrevious.toISOString().split('T')[0];
-
-      const dayLabel = i === 0 ? "Today" : targetDateCurrent.toLocaleDateString("en-US", { weekday: "short" });
-
-      const currentSum = transactions
-        .filter(t => t.type === "expense" && t.date === strCurrent)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const previousSum = transactions
-        .filter(t => t.type === "expense" && t.date === strPrevious)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      trendData.push({
-        dayName: dayLabel,
-        currentDate: strCurrent,
-        previousDate: strPrevious,
-        "Last 7 Days (₹)": parseFloat(currentSum.toFixed(2)),
-        "Previous 7 Days (₹)": parseFloat(previousSum.toFixed(2)),
-      });
-    }
-
-    return trendData;
-  };
-
-  const weeklyTrendData = getWeeklyTrendData();
 
   // Show a minimal loading screen while IndexedDB hydrates
   if (!hydrated) {
@@ -1553,12 +1577,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Transactions List View */}
-          <div className="space-y-2.5 flex-1 max-h-[350px] overflow-y-auto">
+          {/* Transactions List View — virtualized for large lists */}
+          <div ref={txListRef} className="flex-1 max-h-[350px] overflow-y-auto">
             {filteredTransactions.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400 dark:text-slate-500">
                 <p>No transactions matched your search query.</p>
-                <button 
+                <button
                   onClick={() => { setSearchQuery(""); setSelectedCategoryFilter("All"); }}
                   className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline mt-1.5 block mx-auto cursor-pointer"
                 >
@@ -1566,106 +1590,35 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              filteredTransactions.map(tx => {
-                const syncStatus = syncLogs[tx.id]?.status || (tx.synced ? "success" : "idle");
-                return (
-                  <div 
-                    key={tx.id} 
-                    id={`transaction-item-${tx.id}`}
-                    className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-2xl p-3 shadow-xs hover:shadow-sm hover:border-slate-205 dark:hover:border-slate-700 transition-all flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3 truncate max-w-[70%]">
-                      {/* Category-colored Tag Bubble */}
-                      <div 
-                        className="p-3 rounded-xl text-white font-bold text-center flex-shrink-0"
-                        style={{ backgroundColor: CATEGORY_COLORS[tx.category] || "#475569" }}
-                      >
-                        <span className="text-[10px] uppercase font-bold tracking-wider block">
-                          {tx.category.substring(0, 3)}
-                        </span>
-                      </div>
-
-                      <div className="truncate">
-                        <div className="flex items-center gap-1 px-0.5">
-                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate" title={tx.description}>
-                            {tx.description}
-                          </h4>
-                        </div>
-                        
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                          <span className="flex items-center gap-0.5 max-w-[100px] truncate">
-                            <Building2 className="w-2.5 h-2.5" /> {tx.merchant}
-                          </span>
-                          <span>•</span>
-                          <span className="flex items-center gap-0.5">
-                            <Calendar className="w-2.5 h-2.5" /> {tx.date}
-                          </span>
-                        </div>
-
-                        {/* Labels / Tags chips list */}
-                        {tx.labels.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {tx.labels.map((l, index) => (
-                              <span key={`${l}-${index}`} className="bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold px-2 py-0.5 rounded-md text-[9px] lowercase flex items-center gap-0.5">
-                                <Tag className="w-2 h-2 text-slate-400 dark:text-slate-500" /> {l}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+              <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+                {virtualizer.getVirtualItems().map(virtualItem => {
+                  const tx = filteredTransactions[virtualItem.index];
+                  const syncStatus = syncLogs[tx.id]?.status || (tx.synced ? "success" : "idle");
+                  return (
+                    <div
+                      key={tx.id}
+                      data-index={virtualItem.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        transform: `translateY(${virtualItem.start}px)`,
+                        paddingBottom: "10px",
+                      }}
+                    >
+                      <TransactionRow
+                        tx={tx}
+                        syncStatus={syncStatus}
+                        onEdit={handleEditRow}
+                        onDelete={handleDeleteRow}
+                        onSync={handleSyncRow}
+                      />
                     </div>
-
-                    <div className="text-right flex-shrink-0 space-y-1.5 pl-2">
-                      <div className="font-mono font-extrabold text-[13px]">
-                        <span className={tx.type === "expense" ? "text-slate-800 dark:text-slate-100" : "text-emerald-600 dark:text-emerald-400"}>
-                          {tx.type === "expense" ? "-" : "+"}
-                          ₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      {/* Line Sync / Edit Toolbar */}
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          title="Edit transaction details"
-                          onClick={() => triggerEdit(tx)}
-                          id={`btn-edit-tx-${tx.id}`}
-                          className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 py-2 px-2.5 rounded-lg min-h-[36px] flex items-center cursor-pointer"
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          title="Delete record locally"
-                          onClick={() => triggerDelete(tx.id)}
-                          id={`btn-delete-tx-${tx.id}`}
-                          className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 py-2 px-2.5 rounded-lg min-h-[36px] flex items-center cursor-pointer"
-                        >
-                          Delete
-                        </button>
-
-                        {/* Individual Sync Trigger Button */}
-                        <button
-                          onClick={() => syncSingleToNotion(tx)}
-                          title={tx.synced ? "Synced to Notion Database" : "Sync directly to Notion now"}
-                          id={`btn-sync-tx-${tx.id}`}
-                          className={`flex items-center gap-1 text-[11px] font-bold px-2 py-2 min-h-[36px] rounded-lg border cursor-pointer transition-all ${
-                            syncStatus === "success" 
-                              ? "bg-slate-900 dark:bg-slate-950 border-slate-900 dark:border-slate-800 text-amber-400 dark:text-amber-400 hover:bg-slate-850 dark:hover:bg-slate-905" 
-                              : syncStatus === "pending"
-                              ? "bg-amber-100 dark:bg-amber-950 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 uppercase animate-pulse" 
-                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-350"
-                          }`}
-                        >
-                          <Database className="w-2.5 h-2.5 text-amber-500" />
-                          <span>
-                            {syncStatus === "success" ? "Synced" : syncStatus === "pending" ? "Saving" : "Sync"}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
         </motion.div>
