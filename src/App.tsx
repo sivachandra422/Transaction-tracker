@@ -146,44 +146,6 @@ export default function App() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
 
-  // Helper to resolve effective date limits for the active period (kept for the time-period display)
-  const getDateRangeLimits = () => {
-    const now = new Date();
-    switch (dateRangePreset) {
-      case "week": {
-        const startOfWeek = new Date(now);
-        const day = startOfWeek.getDay();
-        startOfWeek.setDate(startOfWeek.getDate() - day + (day === 0 ? -6 : 1));
-        startOfWeek.setHours(0, 0, 0, 0);
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23, 59, 59, 999);
-        return { start: startOfWeek, end: endOfWeek };
-      }
-      case "month": {
-        return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
-        };
-      }
-      case "last_month": {
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999),
-        };
-      }
-      case "custom": {
-        return {
-          start: customStartDate ? new Date(customStartDate + "T00:00:00") : null,
-          end: customEndDate ? new Date(customEndDate + "T23:59:59") : null,
-        };
-      }
-      case "all":
-      default:
-        return { start: null, end: null };
-    }
-  };
-  
   // New Transaction Form State
   const [txType, setTxType] = useState<"expense" | "income">("expense");
   const [txAmount, setTxAmount] = useState("");
@@ -1480,7 +1442,7 @@ export default function App() {
                   {/* Dynamic descriptive subtitle showing resolved limits */}
                   <span className="text-[10px] text-indigo-805 dark:text-indigo-300 font-bold bg-indigo-50 dark:bg-indigo-950/45 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-900/40 font-sans">
                     {(() => {
-                      const { start, end } = getDateRangeLimits();
+                      const { start, end } = dateRangeLimits;
                       if (!start && !end) return "All Time";
                       const format = (d: Date | null) => d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "...";
                       return `${format(start)} - ${format(end)}`;
