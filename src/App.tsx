@@ -33,11 +33,18 @@ export default function App() {
 
   const {
     transactions, rules,
+    hydrated, init,
     addTransaction, updateTransaction, deleteTransaction, clearTransactions,
     markSynced, addRule, deleteRule, resetRules,
   } = useTransactionStore();
 
   const { syncLogs, setSyncPending, setSyncSuccess, setSyncError } = useSyncStore();
+
+  // Boot IndexedDB → in-memory store on first render
+  useEffect(() => {
+    init().catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Local UI state ─────────────────────────────────────────────────────────
   const [onboardingStep, setOnboardingStep] = useState<"welcome" | "signup" | "signin">("welcome");
@@ -670,15 +677,27 @@ export default function App() {
 
   const weeklyTrendData = getWeeklyTrendData();
 
+  // Show a minimal loading screen while IndexedDB hydrates
+  if (!hydrated) {
+    return (
+      <AndroidFrame title="FinSnap Ledger" theme={theme}>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0b121f]">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Loading your ledger…</p>
+        </div>
+      </AndroidFrame>
+    );
+  }
+
   return (
-    <AndroidFrame 
+    <AndroidFrame
       title={
-        currentUser 
-          ? "Notion Smart Tracker" 
-          : onboardingStep === "signup" 
-            ? "Create Account" 
-            : onboardingStep === "signin" 
-              ? "Login Account" 
+        currentUser
+          ? "Notion Smart Tracker"
+          : onboardingStep === "signup"
+            ? "Create Account"
+            : onboardingStep === "signin"
+              ? "Login Account"
               : "Secure SMS Tracker"
       }
       showBack={currentUser ? activeTab !== "dashboard" : onboardingStep !== "welcome"}
