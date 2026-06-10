@@ -9,16 +9,16 @@ import { useSyncStore } from "./store/syncStore";
 import { parseTransactionAi } from "./services/aiApi";
 import { syncToNotion } from "./services/notionApi";
 import { CATEGORIES, CATEGORY_COLORS, DEFAULT_HEURISTICS } from "./constants";
-import { 
-  Plus, Settings, Home, PlusCircle, Database, Trash2, Check, CheckCircle2, 
-  AlertTriangle, RefreshCw, FileText, Sparkles, List, ArrowRight, Search, 
-  Building2, Calendar, Tag, Undo, CheckCheck, FileImage, X, DollarSign,
+import {
+  Plus, Database, Trash2, Check, CheckCircle2,
+  RefreshCw, Sparkles, ArrowRight, Search,
+  Building2, Calendar, Tag, CheckCheck, FileImage, X,
   TrendingDown, TrendingUp, Wallet, PieChart as PieIcon, Sliders, Play,
-  Bell, Info, Smartphone, MessageSquare, Copy, FileSpreadsheet, Cpu,
+  Bell, Smartphone, MessageSquare, FileSpreadsheet, Cpu,
   Sun, Moon, User, Lock, Mail, LogOut, ShieldAlert
 } from "lucide-react";
-import { 
-  ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, LineChart, Line 
+import {
+  ResponsiveContainer, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, Legend, LineChart, Line
 } from "recharts";
 
 
@@ -170,7 +170,7 @@ export default function App() {
   // AI OCR / Fast Entry States
   const [fastEntryText, setFastEntryText] = useState("");
   const [isAiParsing, setIsAiParsing] = useState(false);
-  const [aiParseError, setAiParseError] = useState("");
+  const [_aiParseError, setAiParseError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImageName, setReceiptImageName] = useState<string | null>(null);
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
@@ -293,9 +293,9 @@ export default function App() {
       setReceiptImageName(null);
       setReceiptBase64(null);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setAiParseError(err.message || "An AI scanning error occurred.");
+      setAiParseError(err instanceof Error ? err.message : "An AI scanning error occurred.");
     } finally {
       setIsAiParsing(false);
     }
@@ -395,9 +395,9 @@ export default function App() {
         setActiveIncomingToast(null);
       }, 6000);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setAiParseError(err.message || "Failed to automatically process transaction from SMS.");
+      setAiParseError(err instanceof Error ? err.message : "Failed to automatically process transaction from SMS.");
       setActiveIncomingToast(null);
     } finally {
       setIsAiParsing(false);
@@ -1224,7 +1224,7 @@ export default function App() {
                           } else {
                             alert("Your clipboard is empty! Please copy a bank transaction SMS alert first.");
                           }
-                        } catch (err) {
+                        } catch {
                           alert("Clipboard access blocked by browser security. Please paste your SMS content directly into the text box below.");
                         }
                       }}
@@ -2069,7 +2069,7 @@ export default function App() {
                         ))}
                       </Pie>
                       <Tooltip 
-                        formatter={(value: any) => [`₹${value}`, "Amount"]}
+                        formatter={(value) => [`₹${value}`, "Amount"]}
                         contentStyle={{ borderRadius: "12px", fontSize: "11px", borderColor: "#f1f5f9" }}
                       />
                     </PieChart>

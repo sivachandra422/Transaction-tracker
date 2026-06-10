@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Wifi, Battery, Signal, ArrowLeft, MoreVertical } from "lucide-react";
+import { Wifi, Battery, Signal, ArrowLeft } from "lucide-react";
 
 interface AndroidFrameProps {
   children: React.ReactNode;
