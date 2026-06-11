@@ -113,7 +113,8 @@ async function parseWithOpenCompatible(
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        response_format: { type: "json_object" },
+        // OpenRouter: many routed models reject response_format — rely on prompt JSON
+        ...(provider === "openai" ? { response_format: { type: "json_object" } } : {}),
         temperature: 0.1,
       }),
     });

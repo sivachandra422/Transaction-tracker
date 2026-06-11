@@ -75,10 +75,13 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
   });
 
   // ─── Fast entry: receipt / free text → prefill form ────────────────────────
+  const [receiptMime, setReceiptMime] = useState<string>("image/jpeg");
+
   const handleReceiptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setReceiptName(file.name);
+    setReceiptMime(file.type || "image/jpeg");
     const reader = new FileReader();
     reader.onload = () => setReceiptBase64(reader.result as string);
     reader.readAsDataURL(file);
@@ -98,8 +101,17 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
         apiKey: llmConfig.apiKey,
         model: llmConfig.model,
         ...(fastEntryText.trim() && { text: fastEntryText }),
-        ...(receiptBase64 && { image: receiptBase64, imageType: "image/jpeg" }),
+        ...(receiptBase64 && { image: receiptBase64, imageType: receiptMime }),
       });
+      // An image that only produced the empty offline fallback is a failed scan —
+      // show the reason instead of opening a blank form.
+      if (receiptBase64 && info.isFallback && !info.amount) {
+        setParseError(
+          `Couldn't read the receipt${info.fallbackReason ? `: ${info.fallbackReason}` : "."} ` +
+            "Check the AI provider/model in settings, or type the details as text."
+        );
+        return;
+      }
       fillFromAi(info);
       setFastEntryText("");
       setReceiptName(null);
