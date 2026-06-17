@@ -27,6 +27,7 @@ export default function App() {
   } = useSettingsStore();
   const { transactions, hydrated, init, rehydrate } = useTransactionStore();
   const resetForm = useTxFormStore((s) => s.reset);
+  const editingTxId = useTxFormStore((s) => s.editingTxId);
 
   const [authStep, setAuthStep] = useState<AuthStep>("welcome");
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
@@ -74,7 +75,7 @@ export default function App() {
   };
 
   const navigate = (tab: TabId) => {
-    if (tab === "add") resetForm();
+    if (tab === "add" && !editingTxId) resetForm();
     setActiveTab(tab);
   };
 
