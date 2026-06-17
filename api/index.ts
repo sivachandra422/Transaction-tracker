@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { globalErrorHandler } from "../backend/middleware/errorHandler.js";
 import notionRouter from "../backend/routes/notion.js";
 import aiRouter from "../backend/routes/ai.js";
+import secretsRouter from "../backend/routes/secrets.js";
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api", aiRouter);
 app.use("/api/notion", notionRouter);
+app.use("/api/secrets", secretsRouter);
 app.use(globalErrorHandler);
 
 export default app;

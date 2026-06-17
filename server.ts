@@ -8,6 +8,7 @@ import morgan from "morgan";
 import { globalErrorHandler } from "./backend/middleware/errorHandler.js";
 import notionRouter from "./backend/routes/notion.js";
 import aiRouter from "./backend/routes/ai.js";
+import secretsRouter from "./backend/routes/secrets.js";
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ async function startServer() {
   // ─── Feature routes ──────────────────────────────────────────────────────────
   app.use("/api", aiRouter);
   app.use("/api/notion", notionRouter);
+  app.use("/api/secrets", secretsRouter);
 
   // ─── Frontend static / dev middleware ────────────────────────────────────────
   if (process.env.NODE_ENV !== "production") {
