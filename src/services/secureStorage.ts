@@ -10,16 +10,11 @@
 
 import { Capacitor } from "@capacitor/core";
 
-export const SECURE_KEYS = {
-  NOTION_TOKEN: "secure_notion_token",
-  LLM_API_KEY: "secure_llm_api_key",
-} as const;
-
-type SecureKey = (typeof SECURE_KEYS)[keyof typeof SECURE_KEYS];
+export const SECURE_KEYS = {} as const;
 
 // ─── Synchronous surface (uses sessionStorage as cache) ─────────────────────
 
-export function secureGet(key: SecureKey): string {
+export function secureGet(key: string): string {
   try {
     return sessionStorage.getItem(key) ?? "";
   } catch {
@@ -27,7 +22,7 @@ export function secureGet(key: SecureKey): string {
   }
 }
 
-export function secureSet(key: SecureKey, value: string): void {
+export function secureSet(key: string, value: string): void {
   try {
     sessionStorage.setItem(key, value);
   } catch {
@@ -42,7 +37,7 @@ export function secureSet(key: SecureKey, value: string): void {
 
 export function secureClear(): void {
   try {
-    Object.values(SECURE_KEYS).forEach((k) => sessionStorage.removeItem(k));
+    Object.values(SECURE_KEYS).forEach((k) => sessionStorage.removeItem(k as string));
   } catch {}
 
   if (Capacitor.isNativePlatform()) {
@@ -59,10 +54,10 @@ export async function initSecureStorage(): Promise<void> {
     const { Preferences } = await import("@capacitor/preferences");
 
     for (const key of Object.values(SECURE_KEYS)) {
-      const { value } = await Preferences.get({ key });
+      const { value } = await Preferences.get({ key: key as string });
       if (value !== null) {
         try {
-          sessionStorage.setItem(key, value);
+          sessionStorage.setItem(key as string, value);
         } catch {}
       }
     }
@@ -81,6 +76,6 @@ async function writeToPreferences(key: string, value: string): Promise<void> {
 async function clearPreferences(): Promise<void> {
   const { Preferences } = await import("@capacitor/preferences");
   for (const key of Object.values(SECURE_KEYS)) {
-    await Preferences.remove({ key });
+    await Preferences.remove({ key: key as string });
   }
 }
