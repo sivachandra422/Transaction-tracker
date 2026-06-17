@@ -1,6 +1,7 @@
-import React, { useState } from "react";
-import { Key, Cpu, Eye, EyeOff, Check, Sparkles, Save, ArrowLeft } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Key, Cpu, Eye, EyeOff, Check, Sparkles, Save, ArrowLeft, ShieldCheck } from "lucide-react";
 import type { LlmConfig } from "../types";
+import { saveAiSecret, loadAiConfig } from "../services/aiApi";
 
 interface AiSettingsProps {
   config: LlmConfig;
@@ -10,11 +11,25 @@ interface AiSettingsProps {
 
 export default function AiSettings({ config, onSaveConfig, onClose }: AiSettingsProps) {
   const [provider, setProvider] = useState<LlmConfig["provider"]>(config.provider || "gemini");
-  const [apiKey, setApiKey] = useState(config.apiKey || "");
+  const [apiKey, setApiKey] = useState("");
+  const [hasServerApiKey, setHasServerApiKey] = useState(config.hasServerApiKey ?? false);
+  const [replacingKey, setReplacingKey] = useState(false);
   const [model, setModel] = useState(config.model || "gemini-2.5-flash");
   const [customModelInput, setCustomModelInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    loadAiConfig()
+      .then((cfg) => {
+        setHasServerApiKey(cfg.hasApiKey);
+        setProvider(cfg.provider as LlmConfig["provider"] || config.provider || "gemini");
+        setModel(cfg.model || config.model || "gemini-2.5-flash");
+        onSaveConfig({ provider: cfg.provider as LlmConfig["provider"], model: cfg.model, hasServerApiKey: cfg.hasApiKey });
+      })
+      .catch(() => {/* not signed in — use prop config */});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Suggested models per provider
   const PROVIDER_MODELS: Record<LlmConfig["provider"], Array<{ value: string; label: string; desc: string }>> = {
@@ -50,26 +65,26 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
 
   const currentAvailableModels = PROVIDER_MODELS[provider] || [];
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalModel = model === "custom" ? customModelInput.trim() : model;
 
-    if (provider !== "gemini" && !apiKey.trim()) {
+    if (provider !== "gemini" && !apiKey.trim() && !hasServerApiKey) {
       alert(`An API Key is required when using ${provider === "openrouter" ? "OpenRouter" : "OpenAI"}.`);
       return;
     }
 
-    onSaveConfig({
-      provider,
-      apiKey: apiKey.trim(),
-      model: finalModel
-    });
-
-    setIsSaved(true);
-    setTimeout(() => {
-      setIsSaved(false);
-      onClose();
-    }, 1200);
+    try {
+      await saveAiSecret({ apiKey: apiKey.trim() || undefined, provider, model: finalModel });
+      setHasServerApiKey(true);
+      setApiKey("");
+      setReplacingKey(false);
+      onSaveConfig({ provider, model: finalModel, hasServerApiKey: true });
+      setIsSaved(true);
+      setTimeout(() => { setIsSaved(false); onClose(); }, 1200);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save settings.");
+    }
   };
 
   return (
@@ -98,7 +113,7 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
         <div className="flex gap-2 items-start">
           <Sparkles className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold">Zero-Cost Fallbacks available:</span> Connect to <strong className="font-extrabold text-indigo-950 dark:text-indigo-200">OpenRouter</strong> to use completely free LLMs (like Gemini Flash, Llama etc.) or set your OpenAI keys. Your keys are stored in secure session storage and never sent to our servers.
+            <span className="font-bold">Zero-Cost Fallbacks available:</span> Connect to <strong className="font-extrabold text-indigo-950 dark:text-indigo-200">OpenRouter</strong> to use completely free LLMs (like Gemini Flash, Llama etc.) or set your OpenAI keys. Your keys are stored securely on the server and never returned to the browser after saving.
           </div>
         </div>
       </div>
@@ -131,31 +146,40 @@ export default function AiSettings({ config, onSaveConfig, onClose }: AiSettings
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                <Key className="w-3 h-3 text-slate-400" /> 
+                <Key className="w-3 h-3 text-slate-400" />
                 {provider === "gemini" ? "API Key (Optional / Overwrites Built-in)" : `${provider === "openrouter" ? "OpenRouter" : "OpenAI"} API Key`}
               </label>
-              {apiKey && (
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                >
-                  {showKey ? <EyeOff className="w-3.5 h-3.5 inline mr-0.5" /> : <Eye className="w-3.5 h-3.5 inline mr-0.5" />}
-                  {showKey ? "Hide" : "Reveal"}
-                </button>
-              )}
             </div>
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => {
-                setApiKey(e.target.value);
-                setIsSaved(false);
-              }}
-              placeholder={provider === "gemini" ? "sk-xxxx (or leave blank for custom system default)" : "Pasted API key starts with sk-..."}
-              className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 font-mono transition-all"
-              required={provider !== "gemini"}
-            />
+            {hasServerApiKey && !replacingKey && !apiKey.trim() ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">API Key saved securely on server</span>
+                <button type="button" onClick={() => setReplacingKey(true)} className="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer">
+                  Replace
+                </button>
+              </div>
+            ) : (
+              <>
+                {(hasServerApiKey || apiKey) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer mb-1 block"
+                  >
+                    {showKey ? <EyeOff className="w-3.5 h-3.5 inline mr-0.5" /> : <Eye className="w-3.5 h-3.5 inline mr-0.5" />}
+                    {showKey ? "Hide" : "Reveal"}
+                  </button>
+                )}
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => { setApiKey(e.target.value); setIsSaved(false); }}
+                  placeholder={hasServerApiKey ? "Enter new key to replace saved one" : (provider === "gemini" ? "sk-xxxx (or leave blank for system default)" : "Pasted API key starts with sk-...")}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 dark:text-slate-100 placeholder-slate-400 font-mono transition-all"
+                  required={provider !== "gemini" && !hasServerApiKey}
+                />
+              </>
+            )}
           </div>
 
           {/* Model Selection */}
