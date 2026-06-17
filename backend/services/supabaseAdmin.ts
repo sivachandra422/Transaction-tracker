@@ -14,7 +14,7 @@ export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 /** Verify a Supabase JWT and return the user's UUID. Throws on invalid token. */
 export async function verifyJwt(token: string): Promise<string> {
   const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) throw new Error("Invalid or expired session token.");
+  if (error || !data.user) throw new Error(`JWT verification failed: ${error?.message ?? "no user returned"}`);
   return data.user.id;
 }
 
@@ -30,13 +30,14 @@ export interface UserSecrets {
 
 /** Fetch user's secrets row; returns null if not yet created. */
 export async function getUserSecrets(userId: string): Promise<UserSecrets | null> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("user_secrets")
     .select(
       "notion_token, llm_api_key, llm_provider, llm_model, notion_database_id, notion_auto_sync, notion_database_title"
     )
     .eq("user_id", userId)
     .maybeSingle();
+  if (error) throw new Error(`Failed to fetch user secrets: ${error.message}`);
   return data as UserSecrets | null;
 }
 
