@@ -5,17 +5,13 @@ import { useTransactionStore } from "../store/transactionStore";
 import { useSyncStore } from "../store/syncStore";
 import { syncToNotion } from "../services/notionApi";
 
-/**
- * Single source of truth for Notion sync actions
- * (previously duplicated across the App monolith).
- */
 export function useNotionSync(onNeedConfig?: () => void) {
   const notionConfig = useSettingsStore((s) => s.notionConfig);
   const markSynced = useTransactionStore((s) => s.markSynced);
   const transactions = useTransactionStore((s) => s.transactions);
   const { setSyncPending, setSyncSuccess, setSyncError } = useSyncStore();
 
-  const configured = Boolean(notionConfig.notionToken && notionConfig.notionDatabaseId);
+  const configured = Boolean(notionConfig.hasServerToken && notionConfig.notionDatabaseId);
 
   const syncSingle = useCallback(
     async (tx: Transaction) => {
@@ -29,11 +25,7 @@ export function useNotionSync(onNeedConfig?: () => void) {
       }
       setSyncPending(tx.id);
       try {
-        const data = await syncToNotion(
-          notionConfig.notionToken,
-          notionConfig.notionDatabaseId,
-          tx
-        );
+        const data = await syncToNotion(notionConfig.notionDatabaseId, tx);
         markSynced(tx.id, data.id, data.url);
         setSyncSuccess(tx.id);
       } catch (err) {
