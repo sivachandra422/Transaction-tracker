@@ -1,11 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyJwt } from "../services/supabaseAdmin.js";
 
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-    }
+declare module "express-serve-static-core" {
+  interface Request {
+    userId?: string;
   }
 }
 
