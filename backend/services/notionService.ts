@@ -165,9 +165,12 @@ export async function verifyDatabase(
 
 // ─── Sync transaction ─────────────────────────────────────────────────────────
 
-export async function syncTransaction(input: SyncInput): Promise<SyncResult> {
+export async function syncTransaction(
+  notionToken: string,
+  input: SyncInput
+): Promise<SyncResult> {
   return withRetry(async () => {
-    const { notionToken, notionDatabaseId, transaction } = input;
+    const { notionDatabaseId, transaction } = input;
 
     const properties = buildTransactionProperties(transaction);
     const payload = { parent: { database_id: notionDatabaseId }, properties };

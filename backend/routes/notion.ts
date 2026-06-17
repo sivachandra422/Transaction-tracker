@@ -15,9 +15,23 @@ import {
 } from "../services/notionService.js";
 import { asyncHandler } from "../middleware/errorHandler.js";
 import { notionRateLimiter } from "../middleware/rateLimiter.js";
+import { requireAuth } from "../middleware/requireAuth.js";
+import { getUserSecrets } from "../services/supabaseAdmin.js";
 
 const router = Router();
 router.use(notionRateLimiter);
+router.use(requireAuth);
+
+async function getNotionToken(userId: string): Promise<string> {
+  const secrets = await getUserSecrets(userId);
+  if (!secrets?.notion_token) {
+    throw Object.assign(
+      new Error("No Notion token saved. Please configure it in settings."),
+      { status: 400 }
+    );
+  }
+  return secrets.notion_token;
+}
 
 // ─── POST /api/notion/search-pages ───────────────────────────────────────────
 router.post(
@@ -28,8 +42,8 @@ router.post(
       res.status(400).json({ success: false, error: formatZodError(parsed.error) });
       return;
     }
-
-    const pages = await searchPages(parsed.data.notionToken);
+    const token = await getNotionToken(req.userId!);
+    const pages = await searchPages(token);
     res.json({ success: true, pages });
   })
 );
@@ -43,8 +57,8 @@ router.post(
       res.status(400).json({ success: false, error: formatZodError(parsed.error) });
       return;
     }
-
-    const databases = await searchDatabases(parsed.data.notionToken);
+    const token = await getNotionToken(req.userId!);
+    const databases = await searchDatabases(token);
     res.json({ success: true, databases });
   })
 );
@@ -58,12 +72,8 @@ router.post(
       res.status(400).json({ success: false, error: formatZodError(parsed.error) });
       return;
     }
-
-    const result = await createDatabase(
-      parsed.data.notionToken,
-      parsed.data.parentPageId,
-      parsed.data.title
-    );
+    const token = await getNotionToken(req.userId!);
+    const result = await createDatabase(token, parsed.data.parentPageId, parsed.data.title);
     res.json({ success: true, ...result });
   })
 );
@@ -77,8 +87,8 @@ router.post(
       res.status(400).json({ success: false, error: formatZodError(parsed.error) });
       return;
     }
-
-    const result = await verifyDatabase(parsed.data.notionToken, parsed.data.notionDatabaseId);
+    const token = await getNotionToken(req.userId!);
+    const result = await verifyDatabase(token, parsed.data.notionDatabaseId);
     res.json({ success: true, ...result });
   })
 );
@@ -92,8 +102,8 @@ router.post(
       res.status(400).json({ success: false, error: formatZodError(parsed.error) });
       return;
     }
-
-    const result = await syncTransaction(parsed.data);
+    const token = await getNotionToken(req.userId!);
+    const result = await syncTransaction(token, parsed.data);
     res.json({ success: true, ...result });
   })
 );
