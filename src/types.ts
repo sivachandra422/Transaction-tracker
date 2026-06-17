@@ -21,16 +21,18 @@ export interface Transaction {
 }
 
 export interface NotionConfig {
-  notionToken: string;
   notionDatabaseId: string;
   autoSync: boolean;
   databaseTitle?: string;
+  /** True when the backend has a saved Notion token for this user. */
+  hasServerToken?: boolean;
 }
 
 export interface LlmConfig {
   provider: "gemini" | "openrouter" | "openai";
-  apiKey: string;
   model: string;
+  /** True when the backend has a saved LLM API key for this user. */
+  hasServerApiKey?: boolean;
 }
 
 export interface CategorizationRule {
