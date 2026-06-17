@@ -33,6 +33,7 @@ export default function NotionSettings({
   const [autoSync, setAutoSync] = useState(config.autoSync);
   const [dbTitle, setDbTitle] = useState(config.databaseTitle || "");
   const [hasServerToken, setHasServerToken] = useState(config.hasServerToken ?? false);
+  const [replacingToken, setReplacingToken] = useState(false);
 
   const [setupMode, setSetupMode] = useState<"auto" | "manual">("auto");
   const [isScanning, setIsScanning] = useState(false);
@@ -115,6 +116,7 @@ export default function NotionSettings({
         await saveNotionSecret({ notionToken: token, notionDatabaseId: databaseId, autoSync, databaseTitle: dbTitle });
         setHasServerToken(true);
         setToken("");
+        setReplacingToken(false);
       } catch {
         setScanStatus("error");
         setScanMsg("Failed to save token. Please try again.");
@@ -209,6 +211,7 @@ export default function NotionSettings({
       await saveNotionSecret({ notionToken: token, notionDatabaseId: databaseId, autoSync, databaseTitle: dbTitle });
       setHasServerToken(true);
       setToken("");
+      setReplacingToken(false);
     }
     setIsVerifying(true);
     setVerifyStatus("idle");
@@ -231,6 +234,7 @@ export default function NotionSettings({
   const handleSave = async () => {
     await persistConfig({ notionToken: token || undefined, notionDatabaseId: databaseId, autoSync, databaseTitle: dbTitle });
     setToken("");
+    setReplacingToken(false);
     onClose();
   };
 
@@ -246,7 +250,7 @@ export default function NotionSettings({
     <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
       <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
       <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Token saved securely on server</span>
-      <button type="button" onClick={() => setToken(" ")} className="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer">
+      <button type="button" onClick={() => setReplacingToken(true)} className="ml-auto text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer">
         Replace
       </button>
     </div>
@@ -295,7 +299,7 @@ export default function NotionSettings({
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
                 <Key className="w-3 h-3 text-slate-400" /> Notion Integration Token
               </label>
-              {hasServerToken && !token.trim() ? tokenBadge : tokenInput(hasServerToken ? "Enter new token to replace saved one" : "Paste internal_integration_token...")}
+              {hasServerToken && !replacingToken && !token.trim() ? tokenBadge : tokenInput(hasServerToken ? "Enter new token to replace saved one" : "Paste internal_integration_token...")}
             </div>
             <div className="py-1 flex gap-2">
               <button type="button" onClick={handleScanPages} disabled={isScanning || (!hasServerToken && !token.trim())} className="flex-1 bg-slate-800 dark:bg-slate-950 hover:bg-slate-950 dark:hover:bg-slate-900 border dark:border-slate-800 text-white font-extrabold rounded-xl text-[11px] py-2 transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-40 select-none cursor-pointer">
@@ -359,7 +363,7 @@ export default function NotionSettings({
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
               <Key className="w-3 h-3 text-slate-400" /> API Integration Token
             </label>
-            {hasServerToken && !token.trim() ? tokenBadge : tokenInput(hasServerToken ? "Enter new token to replace" : "secret_xxxxxxxxx")}
+            {hasServerToken && !replacingToken && !token.trim() ? tokenBadge : tokenInput(hasServerToken ? "Enter new token to replace" : "secret_xxxxxxxxx")}
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
