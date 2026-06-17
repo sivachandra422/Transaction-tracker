@@ -98,7 +98,6 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
     try {
       const info = await parseTransactionAi({
         provider: llmConfig.provider,
-        apiKey: llmConfig.apiKey,
         model: llmConfig.model,
         ...(fastEntryText.trim() && { text: fastEntryText }),
         ...(receiptBase64 && { image: receiptBase64, imageType: receiptMime }),
@@ -145,7 +144,6 @@ export default function DashboardScreen({ onNavigate }: DashboardScreenProps) {
       const info = await parseTransactionAi({
         text: smsText,
         provider: llmConfig.provider,
-        apiKey: llmConfig.apiKey,
         model: llmConfig.model,
       });
 

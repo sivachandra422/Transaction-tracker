@@ -144,7 +144,7 @@ export default function App() {
             >
               <Cpu className="w-3 h-3 text-indigo-400" />
               {llmConfig.provider === "gemini"
-                ? llmConfig.apiKey ? "My Gemini" : "Gemini"
+                ? llmConfig.hasServerApiKey ? "My Gemini" : "Gemini"
                 : llmConfig.provider === "openrouter" ? "OpenRouter" : "OpenAI"}
             </button>
 
